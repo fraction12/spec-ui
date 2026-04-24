@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+coverage/
+.playwright-cli/
+.DS_Store
+.env
+.env.*
