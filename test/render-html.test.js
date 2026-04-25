@@ -165,6 +165,542 @@ const prototypeIr = {
   ]
 };
 
+const semanticSaasIr = {
+  metadata: {
+    title: "Ops Console",
+    surface: "app",
+    renderingTarget: {
+      target: "baseline",
+      version: "0.1.0",
+      resolvedTarget: "baseline"
+    }
+  },
+  screens: [
+    {
+      id: "overview",
+      title: "Overview",
+      shell: "app",
+      kind: "dashboard",
+      gap: "lg",
+      regions: [
+        {
+          id: "primary-nav",
+          title: "Navigation",
+          type: "sidebar",
+          gap: "sm",
+          blocks: [
+            {
+              id: "main-nav",
+              title: "Main nav",
+              type: "nav",
+              gap: "xs",
+              items: [
+                {
+                  id: "nav-overview",
+                  type: "nav-item",
+                  label: "Overview",
+                  props: {}
+                },
+                {
+                  id: "nav-settings",
+                  type: "nav-item",
+                  label: "Settings",
+                  props: {},
+                  action: {
+                    type: "navigate",
+                    target: "settings"
+                  }
+                }
+              ],
+              actions: []
+            }
+          ]
+        },
+        {
+          id: "topbar",
+          title: "Topbar",
+          type: "topbar",
+          blocks: [
+            {
+              id: "page-title",
+              title: "Pipeline health",
+              type: "page-header",
+              items: [
+                {
+                  id: "page-copy",
+                  type: "text",
+                  label: "Review live delivery risk.",
+                  props: {}
+                },
+                {
+                  id: "open-risk",
+                  type: "button",
+                  label: "Open risk drawer",
+                  props: {},
+                  action: "open-risk"
+                }
+              ],
+              actions: [
+                {
+                  id: "open-risk",
+                  label: "Open risk drawer",
+                  type: "open-modal",
+                  target: "risk-drawer"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "main-content",
+          title: "Content",
+          type: "content",
+          blocks: [
+            {
+              id: "metrics",
+              title: "Metrics",
+              type: "metric-row",
+              items: [
+                {
+                  id: "mrr",
+                  type: "metric",
+                  label: "MRR",
+                  props: {
+                    value: "$128k",
+                    description: "Up 8%"
+                  }
+                },
+                {
+                  id: "risk",
+                  type: "metric",
+                  label: "At risk",
+                  props: {
+                    value: "14",
+                    description: "Needs attention"
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "accounts",
+              title: "Accounts",
+              type: "data-table",
+              items: [
+                {
+                  id: "account-column",
+                  type: "column",
+                  label: "Account",
+                  props: {}
+                },
+                {
+                  id: "status-column",
+                  type: "column",
+                  label: "Status",
+                  props: {}
+                },
+                {
+                  id: "row-acme",
+                  type: "row",
+                  label: "Acme",
+                  props: {
+                    "account-column": "Acme",
+                    "status-column": "Healthy"
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "risk-drawer-block",
+              title: "Risk drawer",
+              type: "drawer",
+              items: [],
+              actions: [],
+              states: [
+                {
+                  id: "risk-drawer",
+                  type: "drawer",
+                  label: "Risk details",
+                  items: [
+                    {
+                      id: "risk-copy",
+                      type: "text",
+                      label: "Expansion is blocked.",
+                      props: {}
+                    },
+                    {
+                      id: "close-risk",
+                      type: "button",
+                      label: "Close",
+                      props: {},
+                      action: {
+                        id: "close-risk",
+                        label: "Close",
+                        type: "close-modal",
+                        target: "risk-drawer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "activity",
+          title: "Activity",
+          type: "aside",
+          blocks: [
+            {
+              id: "feed",
+              title: "Feed",
+              type: "activity-feed",
+              items: [
+                {
+                  id: "activity-1",
+                  type: "activity",
+                  label: "Renewal call booked",
+                  props: {
+                    description: "Today"
+                  }
+                }
+              ],
+              actions: []
+            }
+          ]
+        },
+        {
+          id: "app-footer",
+          title: "Footer",
+          type: "footer",
+          blocks: [
+            {
+              id: "status",
+              title: "Status",
+              type: "state-panel",
+              items: [
+                {
+                  id: "status-copy",
+                  type: "success",
+                  label: "All systems operational",
+                  props: {}
+                }
+              ],
+              actions: []
+            }
+          ]
+        }
+      ],
+      sections: [],
+      states: []
+    },
+    {
+      id: "settings",
+      title: "Settings",
+      shell: "app",
+      kind: "settings",
+      regions: [
+        {
+          id: "settings-content",
+          title: "Settings",
+          type: "content",
+          blocks: [
+            {
+              id: "workspace",
+              title: "Workspace",
+              type: "settings-group",
+              items: [
+                {
+                  id: "workspace-name",
+                  type: "field",
+                  label: "Workspace name",
+                  props: {
+                    placeholder: "Acme"
+                  }
+                },
+                {
+                  id: "weekly-summary",
+                  type: "toggle",
+                  label: "Weekly summary",
+                  props: {}
+                }
+              ],
+              actions: []
+            }
+          ]
+        }
+      ],
+      sections: [],
+      states: []
+    }
+  ]
+};
+
+const semanticMarketingIr = {
+  metadata: {
+    title: "LaunchPad",
+    surface: "marketing",
+    renderingTarget: {
+      target: "baseline",
+      version: "0.1.0",
+      resolvedTarget: "baseline"
+    }
+  },
+  screens: [
+    {
+      id: "landing",
+      title: "LaunchPad",
+      shell: "marketing",
+      kind: "landing",
+      gap: "xl",
+      regions: [
+        {
+          id: "site-nav",
+          title: "Navigation",
+          type: "navbar",
+          gap: "lg",
+          blocks: [
+            {
+              id: "navbar",
+              title: "LaunchPad",
+              type: "navbar",
+              gap: "sm",
+              items: [
+                {
+                  id: "features-link",
+                  type: "nav-item",
+                  label: "Features",
+                  props: {}
+                },
+                {
+                  id: "pricing-link",
+                  type: "nav-item",
+                  label: "Pricing",
+                  props: {},
+                  action: {
+                    type: "show-state",
+                    target: "pricing-note"
+                  }
+                }
+              ],
+              actions: []
+            }
+          ]
+        },
+        {
+          id: "main",
+          title: "Main",
+          type: "main",
+          blocks: [
+            {
+              id: "hero",
+              title: "Hero",
+              type: "hero",
+              items: [
+                {
+                  id: "headline",
+                  type: "headline",
+                  label: "Ship product decisions faster",
+                  props: {}
+                },
+                {
+                  id: "subhead",
+                  type: "subhead",
+                  label: "Turn structured specs into reviewable prototypes.",
+                  props: {}
+                },
+                {
+                  id: "start-trial",
+                  type: "button",
+                  label: "Start trial",
+                  props: {},
+                  action: {
+                    type: "navigate",
+                    target: "signup"
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "logos",
+              title: "Trusted by",
+              type: "logo-cloud",
+              items: [
+                {
+                  id: "northstar",
+                  type: "logo",
+                  label: "Northstar",
+                  props: {}
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "features",
+              title: "Features",
+              type: "feature-grid",
+              items: [
+                {
+                  id: "semantic-specs",
+                  type: "feature",
+                  label: "Semantic specs",
+                  props: {
+                    description: "Model intent without raw framework code."
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "pricing",
+              title: "Pricing",
+              type: "pricing",
+              items: [
+                {
+                  id: "team",
+                  type: "pricing-tier",
+                  label: "Team",
+                  props: {
+                    price: "$29",
+                    description: "Per editor"
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "proof",
+              title: "Teams say",
+              type: "testimonial-group",
+              items: [
+                {
+                  id: "quote",
+                  type: "testimonial",
+                  label: "The prototype answered the hard questions.",
+                  props: {
+                    description: "PM, Finch Labs"
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "faq",
+              title: "FAQ",
+              type: "faq",
+              items: [
+                {
+                  id: "portable",
+                  type: "faq-item",
+                  label: "Does it run standalone?",
+                  props: {
+                    description: "Yes, as one HTML document."
+                  }
+                }
+              ],
+              actions: []
+            },
+            {
+              id: "cta",
+              title: "Ready",
+              type: "cta",
+              items: [
+                {
+                  id: "cta-copy",
+                  type: "subhead",
+                  label: "Prototype the next decision.",
+                  props: {}
+                }
+              ],
+              actions: [
+                {
+                  id: "cta-signup",
+                  label: "Create account",
+                  type: "navigate",
+                  target: "signup"
+                }
+              ],
+              states: [
+                {
+                  id: "pricing-note",
+                  type: "revealed",
+                  label: "Pricing note",
+                  items: [
+                    {
+                      id: "pricing-copy",
+                      type: "text",
+                      label: "Annual discounts are available.",
+                      props: {}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "site-footer",
+          title: "Footer",
+          type: "footer",
+          blocks: [
+            {
+              id: "footer",
+              title: "Footer",
+              type: "footer",
+              items: [
+                {
+                  id: "copyright",
+                  type: "text",
+                  label: "LaunchPad 2026",
+                  props: {}
+                }
+              ],
+              actions: []
+            }
+          ]
+        }
+      ],
+      sections: [],
+      states: []
+    },
+    {
+      id: "signup",
+      title: "Signup",
+      shell: "marketing",
+      kind: "signup",
+      regions: [
+        {
+          id: "signup-main",
+          title: "Signup",
+          type: "main",
+          blocks: [
+            {
+              id: "signup-form",
+              title: "Create account",
+              type: "signup-form",
+              items: [
+                {
+                  id: "email",
+                  type: "field",
+                  label: "Email",
+                  props: {
+                    placeholder: "you@example.com"
+                  }
+                }
+              ],
+              actions: []
+            }
+          ]
+        }
+      ],
+      sections: [],
+      states: []
+    }
+  ]
+};
+
 describe("renderHtml", () => {
   test("renders a complete deterministic HTML document from IR only", () => {
     const html = renderHtml(prototypeIr);
@@ -259,5 +795,92 @@ describe("renderHtml", () => {
       /data-action-type="open-modal" data-action-target="details"/
     );
     assert.equal(html.match(/data-element-id="open-details"/g).length, 1);
+  });
+
+  test("renders semantic SaaS app shell regions and blocks", () => {
+    const html = renderHtml(semanticSaasIr);
+
+    assert.match(html, /data-screen-shell="app"/);
+    assert.match(html, /data-screen-kind="dashboard"/);
+    assert.match(html, /data-gap="lg"/);
+    assert.match(html, /--spec-ui-gap: 18px/);
+    assert.match(html, /class="spec-ui-regions spec-ui-app-layout"/);
+    assert.match(html, /data-region-type="sidebar"/);
+    assert.match(html, /data-region-type="topbar"/);
+    assert.match(html, /data-region-type="content"/);
+    assert.match(html, /data-region-type="aside"/);
+    assert.match(html, /data-region-type="footer"/);
+    assert.match(html, /data-block-type="metric-row"/);
+    assert.match(html, /data-block-type="data-table"/);
+    assert.match(html, /<table class="spec-ui-table">/);
+    assert.match(html, /<th scope="col">Account<\/th>/);
+    assert.match(html, /<td>Healthy<\/td>/);
+    assert.match(html, /data-block-type="settings-group"/);
+  });
+
+  test("renders semantic marketing shell regions and conversion blocks", () => {
+    const html = renderHtml(semanticMarketingIr);
+
+    assert.match(html, /data-screen-shell="marketing"/);
+    assert.match(html, /data-screen-kind="landing"/);
+    assert.match(html, /data-gap="xl"/);
+    assert.match(html, /--spec-ui-gap: 28px/);
+    assert.match(html, /class="spec-ui-regions spec-ui-marketing-layout"/);
+    assert.match(html, /grid-template-areas: "navbar" "content" "footer"/);
+    assert.match(html, /data-region-type="navbar"/);
+    assert.match(html, /data-region-type="main"/);
+    assert.match(html, /data-region-type="footer"/);
+    assert.match(html, /data-block-type="hero"/);
+    assert.match(html, /data-block-type="logo-cloud"/);
+    assert.match(html, /data-block-type="feature-grid"/);
+    assert.match(html, /data-block-type="pricing"/);
+    assert.match(html, /data-block-type="testimonial-group"/);
+    assert.match(html, /data-block-type="faq"/);
+    assert.match(html, /data-block-type="cta"/);
+    assert.match(html, /Ship product decisions faster/);
+  });
+
+  test("keeps semantic action hooks and state interactions data driven", () => {
+    const appHtml = renderHtml(semanticSaasIr);
+    const marketingHtml = renderHtml(semanticMarketingIr);
+
+    assert.match(
+      appHtml,
+      /data-element-id="nav-settings" data-element-type="nav-item" data-action-type="navigate" data-action-target="settings"/
+    );
+    assert.match(
+      appHtml,
+      /data-element-id="open-risk" data-element-type="button" data-action-type="open-modal" data-action-target="risk-drawer"/
+    );
+    assert.match(
+      appHtml,
+      /data-element-id="close-risk" data-element-type="button" data-action-type="close-modal" data-action-target="risk-drawer"/
+    );
+    assert.match(appHtml, /data-state-id="risk-drawer"/);
+    assert.match(
+      appHtml,
+      /data-state-id="risk-drawer" data-state-type="drawer" hidden/
+    );
+    assert.match(appHtml, /\.spec-ui-state-overlay/);
+    assert.match(appHtml, /place-items: center/);
+    assert.match(appHtml, /exclusiveOverlay/);
+    assert.match(
+      marketingHtml,
+      /data-action-type="show-state" data-action-target="pricing-note"/
+    );
+    assert.match(
+      marketingHtml,
+      /data-action-type="navigate" data-action-target="signup"/
+    );
+  });
+
+  test("renders semantic HTML deterministically without external runtime hooks", () => {
+    const html = renderHtml(semanticMarketingIr);
+
+    assert.equal(html, renderHtml(semanticMarketingIr));
+    assert.doesNotMatch(html, /<link\b/i);
+    assert.doesNotMatch(html, /\ssrc=/i);
+    assert.doesNotMatch(html, /@import/i);
+    assert.doesNotMatch(html, /fetch\(/i);
   });
 });

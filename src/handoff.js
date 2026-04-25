@@ -13,6 +13,7 @@ export function createHandoffResult({
     ...(irPath ? { irPath } : {}),
     ...(inputPath ? { inputPath } : {}),
     sourceHash: createSourceHash({ html, ir }),
+    renderingTarget: normalizeRenderingTarget(ir?.metadata?.renderingTarget),
     viewerCompatibility: ["browser", "microcanvas"],
     warnings: Array.isArray(warnings) ? warnings : []
   };
@@ -40,4 +41,13 @@ function stableStringify(value) {
   }
 
   return JSON.stringify(value);
+}
+
+function normalizeRenderingTarget(renderingTarget) {
+  return {
+    target: renderingTarget?.target ?? "baseline",
+    version: renderingTarget?.version ?? "0.1.0",
+    resolvedTarget: renderingTarget?.resolvedTarget ?? "baseline",
+    selectionSource: renderingTarget?.selectionSource ?? "default"
+  };
 }

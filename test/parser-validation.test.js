@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
 import { parseSpec } from "../src/parser.js";
@@ -55,6 +56,99 @@ describe("parseSpec", () => {
     assert.deepEqual(dashboard.states[0].items.map((item) => item.id), [
       "detailsBody"
     ]);
+    assert.deepEqual(validateSource(source), []);
+  });
+
+  test("parses vNext app regions, blocks, nested states, and item order", () => {
+    const source = parseSpec(`# Spec: Team Ops [surface="app" adapter="baseline"]
+
+## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Sidebar [id="sidebar" type="sidebar" gap="md"]
+#### Block: Primary nav [id="primaryNav" type="nav" gap="md"]
+- nav-item#navDashboard: Dashboard [action="navigate:dashboard"]
+### Region: Main [id="mainContent" type="content" gap="md"]
+#### Block: Header [id="dashHeader" type="page-header" gap="md"]
+- headline#headerTitle: Pipeline health
+- action#newTask: New task [type="open-modal" target="newTaskModal"]
+#### Block: Metrics [id="metrics" type="metric-row" variant="compact" gap="md"]
+- metric#activeDeals: Active deals [value="42" description="Open accounts"]
+##### State: New task modal [id="newTaskModal" type="modal"]
+- field#taskName: Task name [placeholder="Follow up"]
+- button#closeTask: Close [action="close-modal:newTaskModal"]
+`);
+
+    assert.equal(source.title, "Team Ops");
+    assert.equal(source.surface, "app");
+    assert.equal(source.adapter, "baseline");
+    assert.equal(source.line, 1);
+
+    const [screen] = source.screens;
+    assert.equal(screen.id, "dashboard");
+    assert.equal(screen.shell, "app");
+    assert.equal(screen.kind, "dashboard");
+    assert.equal(screen.line, 3);
+    assert.deepEqual(screen.regions.map((region) => region.id), [
+      "sidebar",
+      "mainContent"
+    ]);
+
+    const [sidebar, main] = screen.regions;
+    assert.equal(sidebar.line, 4);
+    assert.deepEqual(sidebar.blocks.map((block) => block.id), ["primaryNav"]);
+    assert.equal(sidebar.blocks[0].line, 5);
+    assert.deepEqual(sidebar.blocks[0].items.map((item) => item.id), [
+      "navDashboard"
+    ]);
+    assert.equal(sidebar.blocks[0].items[0].line, 6);
+
+    assert.deepEqual(main.blocks.map((block) => block.id), [
+      "dashHeader",
+      "metrics"
+    ]);
+    assert.deepEqual(main.blocks[0].actions.map((action) => action.id), [
+      "newTask"
+    ]);
+    assert.equal(main.blocks[0].actions[0].line, 10);
+    assert.deepEqual(main.blocks[1].states.map((state) => state.id), [
+      "newTaskModal"
+    ]);
+    assert.equal(main.blocks[1].states[0].line, 13);
+    assert.deepEqual(main.blocks[1].states[0].items.map((item) => item.id), [
+      "taskName",
+      "closeTask"
+    ]);
+    assert.deepEqual(validateSource(source), []);
+  });
+
+  test("parses and validates a bounded marketing landing page", () => {
+    const source = parseSpec(`# Spec: Launch Site [surface="marketing" adapter="baseline"]
+
+## Screen: Landing [id="landing" shell="marketing" kind="landing" gap="md"]
+### Region: Navbar [id="siteNav" type="navbar" gap="md"]
+#### Block: Navbar [id="navbarBlock" type="navbar" gap="md"]
+- nav-item#featuresNav: Features [href="#features"]
+- button#signupNav: Sign up [action="navigate:signup"]
+### Region: Main [id="main" type="main" gap="md"]
+#### Block: Hero [id="hero" type="hero" variant="split" gap="md"]
+- headline#heroHeadline: Plan products faster
+- subhead#heroSubhead: Turn structured specs into reviewable prototypes.
+#### Block: Pricing [id="pricing" type="pricing" gap="md"]
+- pricing-tier#proTier: Pro [price="$29"]
+- faq-item#pricingFaq: Can I export HTML? [answer="Yes"]
+### Region: Footer [id="footerRegion" type="footer" gap="md"]
+#### Block: Footer [id="footerBlock" type="footer" gap="md"]
+- text#copyright: Copyright 2026
+
+## Screen: Signup [id="signup" shell="marketing" kind="signup" gap="md"]
+### Region: Main [id="signupMain" type="main" gap="md"]
+#### Block: Signup form [id="signupForm" type="signup-form" gap="md"]
+- field#email: Work email [placeholder="you@example.com"]
+`);
+
+    assert.deepEqual(
+      source.screens[0].regions[1].blocks.map((block) => block.type),
+      ["hero", "pricing"]
+    );
     assert.deepEqual(validateSource(source), []);
   });
 });
@@ -171,5 +265,164 @@ describe("validateSource", () => {
         line: 5
       }
     ]);
+  });
+
+  test("rejects unsupported adapters and raw implementation details", () => {
+    const source = parseSpec(`# Spec: Bad Details [surface="app" adapter="shadcn"]
+
+## Screen: Home [id="home" shell="app" kind="dashboard" gap="md"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Header [id="header" type="page-header" gap="md"]
+- button#styled: Save [class="bg-blue-500" component="Button"]
+<script>alert("nope")</script>
+`);
+
+    assert.deepEqual(validateSource(source).map((error) => error.code), [
+      "implementation_detail",
+      "unsupported_adapter",
+      "raw_html"
+    ]);
+  });
+
+  test("rejects invalid semantic nesting and unknown semantic values", () => {
+    const source = parseSpec(`# Spec: Bad Semantics [surface="desktop" adapter="baseline"]
+
+## Screen: Home [id="home" shell="app" kind="landing" gap="md"]
+### Region: Marketing nav [id="marketingNav" type="navbar" gap="md"]
+#### Block: Hero [id="hero" type="hero" variant="cinematic" gap="md"]
+- chart#badChart: Unsupported chart
+- button#badAction: Bad action [action="launch:home"]
+##### State: Popover [id="popover" type="popover"]
+- text#popoverCopy: Popover copy
+
+## Screen: Bad Shell [id="badShell" shell="mobile" kind="unknown" gap="md"]
+`);
+
+    assert.deepEqual(validateSource(source).map((error) => error.code), [
+      "unsupported_surface",
+      "invalid_screen_kind",
+      "invalid_semantic_nesting",
+      "unsupported_block_variant",
+      "invalid_semantic_nesting",
+      "unsupported_item_type",
+      "invalid_action_type",
+      "unsupported_state_type",
+      "unsupported_shell",
+      "unsupported_screen_kind"
+    ]);
+  });
+
+  test("requires bounded gap values on vNext layout structures", () => {
+    const missing = parseSpec(`# Spec: Missing Gaps [surface="app" adapter="baseline"]
+
+## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard"]
+### Region: Main [id="main" type="content"]
+#### Block: Header [id="header" type="page-header"]
+- text#copy: Missing layout gaps
+`);
+
+    assert.deepEqual(validateSource(missing).map((error) => error.code), [
+      "missing_screen_gap",
+      "missing_region_gap",
+      "missing_block_gap"
+    ]);
+
+    const unsupported = parseSpec(`# Spec: Bad Gap [surface="app" adapter="baseline"]
+
+## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="huge"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Header [id="header" type="page-header" gap="xs"]
+- text#copy: Unsupported screen gap
+`);
+
+    assert.deepEqual(validateSource(unsupported).map((error) => error.code), [
+      "unsupported_gap"
+    ]);
+  });
+
+  test("reports parser errors for illegal vNext nesting with source lines", () => {
+    const source = parseSpec(`# Spec: Bad Nesting
+
+### Region: Orphan region [id="orphanRegion" type="content" gap="md"]
+#### Block: Orphan block [id="orphanBlock" type="page-header" gap="md"]
+##### State: Orphan state [id="orphanState" type="modal"]
+- text#orphanText: Orphan text
+`);
+
+    assert.deepEqual(source.errors, [
+      {
+        code: "region_outside_screen",
+        message: "Region must be declared inside a screen.",
+        line: 3
+      },
+      {
+        code: "block_outside_region_or_section",
+        message: "Block must be declared inside a region or legacy section.",
+        line: 4
+      },
+      {
+        code: "state_outside_block",
+        message: "Nested block state must be declared inside a block.",
+        line: 5
+      },
+      {
+        code: "element_outside_section_or_state",
+        message: "Element must be declared inside a block, section, or state.",
+        line: 6
+      }
+    ]);
+  });
+
+  test("validates current vNext fixture files from the grammar lane", () => {
+    const fixturePaths = [
+      "fixtures/valid/saas-dashboard.md",
+      "fixtures/valid/saas-settings.md",
+      "fixtures/valid/marketing-landing.md"
+    ];
+
+    for (const fixturePath of fixturePaths) {
+      const source = parseSpec(readFileSync(fixturePath, "utf8"));
+      assert.deepEqual(validateSource(source), [], fixturePath);
+    }
+  });
+
+  test("rejects current invalid vNext fixture files from the grammar lane", () => {
+    const expectedCodesByFixture = {
+      "fixtures/invalid/unsupported-adapter.md": ["unsupported_adapter"],
+      "fixtures/invalid/raw-implementation-detail.md": [
+        "implementation_detail",
+        "implementation_detail",
+        "raw_html"
+      ],
+      "fixtures/invalid/invalid-semantic-nesting.md": [
+        "invalid_semantic_nesting"
+      ],
+      "fixtures/invalid/unknown-semantic-type.md": [
+        "unsupported_block_type",
+        "unsupported_item_type"
+      ]
+    };
+
+    for (const [fixturePath, expectedCodes] of Object.entries(expectedCodesByFixture)) {
+      const source = parseSpec(readFileSync(fixturePath, "utf8"));
+      assert.deepEqual(
+        validateSource(source).map((error) => error.code),
+        expectedCodes,
+        fixturePath
+      );
+    }
+  });
+
+  test("regresses current foundation fixtures through parser and validation", () => {
+    const fixturePaths = [
+      "fixtures/valid/minimal.md",
+      "fixtures/valid/states.md",
+      "fixtures/valid/task-board.md"
+    ];
+
+    for (const fixturePath of fixturePaths) {
+      const source = parseSpec(readFileSync(fixturePath, "utf8"));
+      assert.deepEqual(validateSource(source), [], fixturePath);
+    }
   });
 });

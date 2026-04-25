@@ -121,9 +121,9 @@ The change will introduce explicit semantic headings, block types, and item type
 
 ```md
 # Spec: <title> [surface="app|marketing" adapter="baseline"]
-## Screen: <title> [id="<screen-id>" shell="app|marketing|none" kind="<screen-kind>"]
-### Region: <title> [id="<region-id>" type="<region-type>"]
-#### Block: <title> [id="<block-id>" type="<block-type>" variant="<variant>"]
+## Screen: <title> [id="<screen-id>" shell="app|marketing|none" kind="<screen-kind>" gap="none|xs|sm|md|lg|xl"]
+### Region: <title> [id="<region-id>" type="<region-type>" gap="none|xs|sm|md|lg|xl"]
+#### Block: <title> [id="<block-id>" type="<block-type>" variant="<variant>" gap="none|xs|sm|md|lg|xl"]
 - <item-type>#<item-id>: <label> [key="value" action="<action-type>:<target-id>"]
 ##### State: <label> [id="<state-id>" type="<state-type>"]
 - <item-type>#<item-id>: <label> [key="value" action="<action-type>:<target-id>"]
@@ -163,6 +163,7 @@ The final grammar MUST cover the following bounded semantic families. Additions 
 
 ### Cross-cutting semantics
 - Stable IDs are required for screens, regions, blocks, states, and items.
+- VNext screens, regions, and blocks must specify symbolic `gap` values from `none`, `xs`, `sm`, `md`, `lg`, or `xl`; the renderer translates these values into deterministic CSS.
 - Supported action types remain deterministic and explicit: `navigate`, `open-modal`, `close-modal`, `toggle`, `show-state`, and `set-tab`.
 - Block variants are optional and must come from documented finite sets.
 - Item props are string key/value pairs only. Props may express semantic data such as `value`, `description`, `status`, `tone`, `placeholder`, `href`, `featured`, or `price`, but not raw CSS/JS/framework implementation.
@@ -176,10 +177,13 @@ Parser and validation work should enforce these rules:
 - `surface` must be `app` or `marketing` when present.
 - `adapter` must be `baseline` when present; unsupported adapters fail explicitly.
 - A screen must have a stable `id`.
+- A vNext screen with semantic regions must specify a supported `gap`.
 - A vNext screen using `shell="app"` may only contain app-compatible region and block types.
 - A vNext screen using `shell="marketing"` may only contain marketing-compatible region and block types.
 - Regions must be inside screens.
+- Regions must specify a supported `gap`.
 - Blocks must be inside regions, or inside legacy sections only when rendered as backward-compatible sections.
+- Blocks must specify a supported `gap`.
 - Items must be inside blocks, states, or legacy sections.
 - State headings inside vNext blocks must compile as stateful flow content scoped to the current screen.
 - IDs must be globally unique across the spec.
@@ -196,9 +200,11 @@ Required additions:
 - `metadata.surface`: `app`, `marketing`, or inferred fallback.
 - `screens[].shell`: `app`, `marketing`, or `none`.
 - `screens[].kind`: bounded screen kind.
+- `screens[].gap`: symbolic spacing intent when semantic regions are present.
 - `screens[].regions[]`: ordered semantic regions.
+- `regions[].gap`: symbolic spacing between blocks.
 - `regions[].blocks[]`: ordered semantic blocks.
-- `blocks[].type`, `blocks[].variant`, `blocks[].items[]`, `blocks[].actions[]`, and optional `blocks[].states[]`.
+- `blocks[].type`, `blocks[].variant`, `blocks[].gap`, `blocks[].items[]`, `blocks[].actions[]`, and optional `blocks[].states[]`.
 - Existing `sections[]` and `states[]` continue to exist for backward compatibility unless the compiler can provide a compatibility adapter with tests.
 
 Determinism requirements:

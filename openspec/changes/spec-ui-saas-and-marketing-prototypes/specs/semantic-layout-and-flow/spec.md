@@ -16,6 +16,15 @@ Spec UI SHALL support semantic layout and flow constructs for common page and pr
 - **THEN** validation SHALL accept the structure
 - **AND** validation SHALL reject items outside blocks/states/legacy sections, blocks outside regions, and regions outside screens
 
+#### Scenario: Compile spec-authored spacing intent
+- **WHEN** a vNext spec declares supported `gap` values on screens, regions, and blocks
+- **THEN** the parser, validator, compiler, and renderer SHALL preserve the symbolic spacing intent
+- **AND** the renderer SHALL translate the symbolic gap into deterministic output without requiring raw CSS in the spec
+
+#### Scenario: Reject missing or unsupported spacing intent
+- **WHEN** a vNext screen, region, or block omits a required `gap` value or declares an unsupported gap value
+- **THEN** validation SHALL fail with an explicit gap error rather than falling back to renderer-defined spacing
+
 #### Scenario: Encounter implementation-heavy authoring
 - **WHEN** a spec relies on raw implementation syntax as the primary expression of layout meaning
 - **THEN** the system SHALL reject, isolate, or downgrade that input according to documented grammar rules rather than treating it as canonical semantic structure

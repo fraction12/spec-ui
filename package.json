@@ -10,7 +10,9 @@
     "lint": "node scripts/check-syntax.mjs",
     "test": "node --test",
     "check": "npm run lint && npm test",
-    "compile:example": "node bin/spec-ui.mjs compile examples/task-board.md --out artifacts/task-board.html --ir artifacts/task-board.ir.json"
+    "compile:example": "node bin/spec-ui.mjs compile examples/task-board.md --out artifacts/task-board.html --ir artifacts/task-board.ir.json",
+    "compile:saas": "node bin/spec-ui.mjs compile examples/saas-dashboard.md --out artifacts/saas-dashboard.html --ir artifacts/saas-dashboard.ir.json",
+    "compile:marketing": "node bin/spec-ui.mjs compile examples/marketing-landing.md --out artifacts/marketing-landing.html --ir artifacts/marketing-landing.ir.json"
   },
   "engines": {
     "node": ">=20"

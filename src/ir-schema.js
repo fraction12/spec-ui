@@ -16,7 +16,13 @@ export const IR_SCHEMA = {
   definitions: {
     metadata: {
       type: "object",
-      required: ["generatedBy", "sourceHash", "compiledAt"],
+      required: [
+        "generatedBy",
+        "sourceHash",
+        "compiledAt",
+        "surface",
+        "renderingTarget"
+      ],
       additionalProperties: false,
       properties: {
         generatedBy: { const: "spec-ui" },
@@ -26,19 +32,86 @@ export const IR_SCHEMA = {
         },
         compiledAt: {
           anyOf: [{ type: "string" }, { type: "null" }]
-        }
+        },
+        surface: { type: "string" },
+        renderingTarget: { $ref: "#/definitions/renderingTarget" }
+      }
+    },
+    renderingTarget: {
+      type: "object",
+      required: ["target", "version", "resolvedTarget", "selectionSource"],
+      additionalProperties: false,
+      properties: {
+        target: { type: "string" },
+        version: { type: "string" },
+        resolvedTarget: { type: "string" },
+        selectionSource: { type: "string" }
       }
     },
     screen: {
       type: "object",
-      required: ["id", "title", "sections", "states"],
+      required: ["id", "title", "shell", "kind", "regions", "sections", "states"],
       additionalProperties: false,
       properties: {
         id: { type: "string" },
         title: { type: "string" },
+        shell: { type: "string" },
+        kind: { type: "string" },
+        gap: {
+          anyOf: [{ type: "string" }, { type: "null" }]
+        },
+        regions: {
+          type: "array",
+          items: { $ref: "#/definitions/region" }
+        },
         sections: {
           type: "array",
           items: { $ref: "#/definitions/section" }
+        },
+        states: {
+          type: "array",
+          items: { $ref: "#/definitions/state" }
+        }
+      }
+    },
+    region: {
+      type: "object",
+      required: ["id", "title", "type", "blocks"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        type: { type: "string" },
+        gap: {
+          anyOf: [{ type: "string" }, { type: "null" }]
+        },
+        blocks: {
+          type: "array",
+          items: { $ref: "#/definitions/block" }
+        }
+      }
+    },
+    block: {
+      type: "object",
+      required: ["id", "title", "type", "variant", "items", "actions"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        type: { type: "string" },
+        variant: {
+          anyOf: [{ type: "string" }, { type: "null" }]
+        },
+        gap: {
+          anyOf: [{ type: "string" }, { type: "null" }]
+        },
+        items: {
+          type: "array",
+          items: { $ref: "#/definitions/element" }
+        },
+        actions: {
+          type: "array",
+          items: { $ref: "#/definitions/action" }
         },
         states: {
           type: "array",
