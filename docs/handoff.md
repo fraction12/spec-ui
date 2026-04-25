@@ -4,11 +4,14 @@ Spec UI owns parsing, validation, IR generation, and HTML artifact generation. V
 
 ## Handoff Artifact
 
-Successful compilation produces a portable HTML file. The file is the primary handoff contract for browsers, Micro Canvas, and other compatible viewers.
+Successful compilation produces a portable HTML file. The file is the primary
+handoff contract for any compatible viewing surface.
 
 The artifact must be openable without a running Spec UI compiler process. It may contain embedded CSS and JavaScript needed for supported interactions, as long as unchanged input and unchanged configuration produce stable output.
 
-Generated HTML must not require external fonts, stylesheets, scripts, package runtimes, network calls, browser extensions, Micro Canvas-specific APIs, or a live backend.
+Generated HTML must not require external fonts, stylesheets, scripts, package
+runtimes, network calls, browser extensions, viewer-specific APIs, or a live
+backend.
 
 ## Handoff Metadata
 
@@ -57,7 +60,7 @@ A failed compile should expose validation failure metadata:
 - `errors`: ordered validation errors with code, message, source line when known, and source column when known.
 - `artifactPath`: absent.
 
-## Browser Portability Contract
+## Browser Compatibility Baseline
 
 A standards-based browser should be able to open the generated HTML artifact directly from disk or through a static file server. Browser inspection is the baseline portability check.
 
@@ -68,7 +71,7 @@ The browser viewer should:
 - Avoid adding network-only assumptions to artifact display.
 - Treat Spec UI metadata as descriptive, not as instructions to recompile source markdown.
 
-## Micro Canvas Portability Contract
+## Micro Canvas Compatibility Notes
 
 Micro Canvas may stage, show, verify, or snapshot the generated HTML artifact. It remains a viewing surface. Spec UI remains responsible for source grammar, validation, IR, rendering target resolution, and renderer semantics.
 
@@ -95,7 +98,7 @@ Compatible viewers should not:
 - Rewrite unsupported structures into new UI semantics.
 - Select arbitrary component libraries based on source markup.
 - Add non-deterministic behavior that changes the intended prototype flow.
-- Require Micro Canvas-specific APIs for basic artifact inspection.
+- Require viewer-specific APIs for basic artifact inspection.
 
 ## Agent Handoff Loop
 

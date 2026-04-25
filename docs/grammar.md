@@ -456,12 +456,18 @@ Spec UI favors validation errors over guessing. If a semantic value is not liste
 The package loop keeps the markdown source of truth ahead of renderer tweaks:
 
 1. Edit the role file that matches the requested change.
-2. Compile the manifest or package directory.
-3. Inspect the generated standalone HTML in a browser or Micro Canvas.
-4. Record UAT findings and durable constraints in `acceptance.md`.
-5. Repeat until the package reaches acceptance.
+2. Run `spec-ui status <input>` to check readiness when needed.
+3. Use `spec-ui instructions <role> --input <input>` for focused edit guidance.
+4. Validate the package before handoff.
+5. Compile the manifest or package directory.
+6. Inspect the generated standalone HTML artifact.
+7. Record UAT findings and durable constraints in `acceptance.md`.
+8. Repeat until the package reaches acceptance.
 
 Agents should prefer the smallest role-file edit that expresses the user request. Copy changes usually belong in `content.md`, navigation and interaction changes in `flows.md`, screen structure in `screens.md`, spacing and responsive behavior in `layout.md`, visual tone in `tokens.md`, and inspection feedback in `acceptance.md`.
+
+See `docs/cli.md` for initialized repo structure, `.spec-ui/` file meanings,
+default config, template roles, and command compatibility notes.
 
 ## OpenSpec Workflow Comparison
 

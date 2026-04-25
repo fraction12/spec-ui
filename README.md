@@ -1,12 +1,15 @@
 # spec-ui
 
-Spec UI turns agent-authored markdown specs into portable, interactive, decision-grade HTML prototypes that can be opened in Micro Canvas, a browser, or another compatible viewer.
+Spec UI turns agent-authored markdown specs into standalone, deterministic,
+portable HTML prototypes for review and handoff.
 
 ## Status
+
 Spec UI has a dependency-free foundation compiler plus a bounded vNext semantic
-grammar for SaaS/web-app and marketing-page prototypes.
-The active package-format change adds a manifest-driven package mode for larger
-prototype loops while preserving the current single-file flow.
+grammar for SaaS/web-app and marketing-page prototypes. The active CLI workflow
+change adds OpenSpec-style commands for initialization, discovery, status,
+role-specific instructions, validation, and compilation while preserving the
+current single-file flow.
 
 ## Compile Flow
 
@@ -16,6 +19,28 @@ structured markdown or prototype package -> parser -> validation -> IR -> determ
 
 Spec UI treats the generated HTML file as the handoff contract. Viewers open
 that artifact; they do not own parsing, validation, or compilation semantics.
+
+## CLI Workflow
+
+The CLI is organized around the same calm loop used by OpenSpec: discover what
+exists, inspect readiness, get focused edit guidance, validate, then compile the
+handoff artifact.
+
+```bash
+spec-ui init --examples
+spec-ui list
+spec-ui status revenue-workspace
+spec-ui instructions layout --input revenue-workspace
+spec-ui validate revenue-workspace --strict
+spec-ui compile revenue-workspace --out artifacts/revenue-workspace.html
+```
+
+Use `--json` on workflow commands when an agent or script needs stable
+machine-readable output. JSON mode writes valid JSON only to stdout.
+
+`spec-ui compile <input> --status` remains a compatibility alias for
+`spec-ui status <input> --json`, so existing package-readiness scripts can move
+to the first-class `status` command when convenient.
 
 ## Grammar Scope
 
@@ -35,7 +60,8 @@ the `baseline` target; package examples declare the semantic `bootstrap-html`
 adapter target while keeping source files adapter-neutral. Generated handoff
 metadata records the resolved target and portability details.
 
-See `docs/grammar.md` and `docs/handoff.md` for the full contract.
+See `docs/grammar.md`, `docs/cli.md`, and `docs/handoff.md` for the full
+contract.
 
 ## Source Modes
 
@@ -66,6 +92,8 @@ Canonical package examples live in:
 - `examples/` contains canonical specs users can compile.
 - `fixtures/` contains test inputs for valid and invalid specs.
 - `artifacts/` is the local output directory for generated HTML and IR JSON.
+- `.spec-ui/` is optional repo-local configuration created by `spec-ui init`;
+  it stores conventions and templates, not prototype source packages.
 
 ## Development
 

@@ -104,6 +104,61 @@ export function loadPackageSource(inputPath) {
   return source;
 }
 
+export function loadPackageInput(inputPath) {
+  const detected = detectSourceInput(inputPath);
+  const packageRoot = detected.packageRoot ?? path.dirname(detected.inputPath ?? inputPath);
+  const manifestPath = detected.manifestPath ?? path.join(packageRoot, PACKAGE_MANIFEST);
+
+  if (!existsSync(manifestPath)) {
+    return {
+      packageRoot,
+      manifestPath,
+      manifestMarkdown: "",
+      manifest: {
+        title: "",
+        adapter: "bootstrap-html",
+        target: "standalone-html",
+        fidelity: "prototype",
+        includes: []
+      },
+      files: []
+    };
+  }
+
+  const manifestMarkdown = readFileSync(manifestPath, "utf8");
+  const manifest = parsePrototypeManifest(manifestMarkdown, {
+    manifestPath,
+    sourceFile: manifestPath
+  });
+  const files = [];
+
+  for (const include of manifest.includes) {
+    const absolutePath = path.resolve(packageRoot, include.path);
+    const relativeToRoot = path.relative(packageRoot, absolutePath);
+    const outsideRoot =
+      path.isAbsolute(include.path) ||
+      relativeToRoot === ".." ||
+      relativeToRoot.startsWith(`..${path.sep}`);
+
+    if (outsideRoot || !existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+      continue;
+    }
+
+    files.push({
+      path: include.path,
+      contents: readFileSync(absolutePath, "utf8")
+    });
+  }
+
+  return {
+    packageRoot,
+    manifestPath,
+    manifestMarkdown,
+    manifest,
+    files
+  };
+}
+
 export function packageSourceFromManifest(manifest, packageRoot = "", manifestPath = "") {
   return {
     sourceMode: "package",
