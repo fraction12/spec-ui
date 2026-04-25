@@ -5,11 +5,13 @@ Spec UI turns agent-authored markdown specs into portable, interactive, decision
 ## Status
 Spec UI has a dependency-free foundation compiler plus a bounded vNext semantic
 grammar for SaaS/web-app and marketing-page prototypes.
+The active package-format change adds a manifest-driven package mode for larger
+prototype loops while preserving the current single-file flow.
 
 ## Compile Flow
 
 ```text
-structured markdown -> parser -> validation -> IR -> deterministic HTML
+structured markdown or prototype package -> parser -> validation -> IR -> deterministic HTML
 ```
 
 Spec UI treats the generated HTML file as the handoff contract. Viewers open
@@ -28,10 +30,33 @@ regions and blocks for two surfaces:
 
 The source grammar deliberately rejects raw HTML, JSX, CSS classes, scripts,
 styles, arbitrary component names, production framework export, runtime package
-loading, backend behavior, and broad theming. The current rendering target is
-`baseline`; generated handoff metadata records the resolved target.
+loading, backend behavior, and broad theming. Existing single-file examples use
+the `baseline` target; package examples declare the semantic `bootstrap-html`
+adapter target while keeping source files adapter-neutral. Generated handoff
+metadata records the resolved target and portability details.
 
 See `docs/grammar.md` and `docs/handoff.md` for the full contract.
+
+## Source Modes
+
+Use single-file mode for small prototypes, compatibility checks, and quick
+experiments. The existing examples in `examples/*.md` remain canonical
+single-file specs.
+
+Use package mode when a prototype needs a durable user/agent loop:
+
+```text
+prototype.md -> screens.md + flows.md + content.md + layout.md + tokens.md + acceptance.md
+```
+
+The manifest controls metadata and deterministic include order. Agents should
+edit the focused role file, compile the package, inspect the portable HTML,
+capture UAT findings in `acceptance.md`, and repeat.
+
+Canonical package examples live in:
+
+- `examples/revenue-workspace-package/`
+- `examples/launchlayer-marketing-package/`
 
 ## Project Layout
 

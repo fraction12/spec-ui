@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { renderHtml } from "../src/render-html.js";
+import {
+  HTML_ADAPTER_REGISTRY,
+  RenderHtmlError,
+  renderHtml
+} from "../src/render-html.js";
 
 const prototypeIr = {
   metadata: {
@@ -749,6 +753,21 @@ describe("renderHtml", () => {
     assert.match(html, /document\.addEventListener\("click"/);
   });
 
+  test("clears transient feedback when closing a modal from an overlay", () => {
+    const html = renderHtml(prototypeIr);
+
+    assert.match(html, /function clearTransientOverlayStates\(trigger\)/);
+    assert.match(html, /trigger\.closest\("\[data-state-overlay\]"\)/);
+    assert.match(
+      html,
+      /stateType === "success" \|\| stateType === "error" \|\| stateType === "empty" \|\| stateType === "loading"/
+    );
+    assert.match(
+      html,
+      /if \(type === "close-modal"\) \{[\s\S]*clearTransientOverlayStates\(trigger\);[\s\S]*\}/
+    );
+  });
+
   test("resolves compiled element action ids through section actions", () => {
     const html = renderHtml({
       title: "Compiled IR",
@@ -882,5 +901,196 @@ describe("renderHtml", () => {
     assert.doesNotMatch(html, /\ssrc=/i);
     assert.doesNotMatch(html, /@import/i);
     assert.doesNotMatch(html, /fetch\(/i);
+  });
+
+  test("exposes baseline and bootstrap-html adapter registry entries", () => {
+    assert.deepEqual(Object.keys(HTML_ADAPTER_REGISTRY).sort(), [
+      "baseline",
+      "bootstrap-html"
+    ]);
+    assert.equal(HTML_ADAPTER_REGISTRY.baseline.resolvedTarget, "baseline");
+    assert.equal(
+      HTML_ADAPTER_REGISTRY["bootstrap-html"].resolvedLibrary.pinnedMajor,
+      "5"
+    );
+    assert.equal(
+      HTML_ADAPTER_REGISTRY["bootstrap-html"].assetProvenance,
+      "repo-vendored-inline"
+    );
+  });
+
+  test("renders bootstrap-html as deterministic standalone HTML with pinned provenance", () => {
+    const ir = {
+      ...semanticSaasIr,
+      metadata: {
+        ...semanticSaasIr.metadata,
+        renderingTarget: {
+          target: "bootstrap-html",
+          version: "0.1.0",
+          resolvedTarget: "bootstrap-html"
+        },
+        tokens: {
+          brand: "teal",
+          radius: "sm",
+          density: "compact",
+          treatment: "outlined"
+        }
+      }
+    };
+    const html = renderHtml(ir);
+
+    assert.equal(html, renderHtml(ir));
+    assert.match(html, /data-spec-ui-adapter="bootstrap-html"/);
+    assert.match(html, /data-bootstrap-provenance="repo-vendored-inline"/);
+    assert.match(html, /name="spec-ui-bootstrap" content="5\.3-compatible"/);
+    assert.match(html, /Bootstrap 5\.3-compatible support layer/);
+    assert.doesNotMatch(html, /<link\b/i);
+    assert.doesNotMatch(html, /\ssrc=/i);
+    assert.doesNotMatch(html, /https?:\/\//i);
+    assert.doesNotMatch(html, /@import/i);
+    assert.doesNotMatch(html, /fetch\(/i);
+  });
+
+  test("maps semantic SaaS blocks to Bootstrap-compatible markup", () => {
+    const html = renderHtml(semanticSaasIr, { adapter: "bootstrap-html" });
+
+    assert.match(html, /class="spec-bs-shell container-fluid"/);
+    assert.match(html, /class="row g-4"/);
+    assert.match(html, /class="card spec-bs-block spec-bs-block-metric-row/);
+    assert.match(html, /class="table-responsive"/);
+    assert.match(html, /<table class="table">/);
+    assert.match(html, /class="form-check spec-bs-element"/);
+    assert.match(html, /class="btn btn-primary spec-bs-action"/);
+    assert.match(html, /data-action-type="open-modal" data-action-target="risk-drawer"/);
+    assert.match(html, /class="card spec-bs-state spec-bs-state-drawer"/);
+  });
+
+  test("maps semantic marketing blocks and layout controls deterministically", () => {
+    const ir = {
+      ...semanticMarketingIr,
+      metadata: {
+        ...semanticMarketingIr.metadata,
+        renderingTarget: {
+          target: "bootstrap-html",
+          version: "0.1.0",
+          resolvedTarget: "bootstrap-html"
+        }
+      },
+      screens: semanticMarketingIr.screens.map((screen) =>
+        screen.id === "landing"
+          ? {
+              ...screen,
+              layout: {
+                density: "comfortable",
+                padding: "lg",
+                width: "wide",
+                align: "start",
+                overflow: "contain"
+              },
+              regions: screen.regions.map((region) => ({
+                ...region,
+                blocks: region.blocks.map((block) =>
+                  block.id === "features"
+                    ? {
+                        ...block,
+                        layout: {
+                          columns: "3",
+                          collapse: "stack",
+                          text: "wrap"
+                        }
+                      }
+                    : block
+                )
+              }))
+            }
+          : screen
+      )
+    };
+    const html = renderHtml(ir);
+
+    assert.match(html, /spec-bs-screen-marketing/);
+    assert.match(html, /spec-bs-marketing-hero/);
+    assert.match(html, /class="display-6 spec-bs-element"/);
+    assert.match(html, /class="lead spec-bs-element"/);
+    assert.match(html, /spec-bs-block-feature-grid/);
+    assert.match(html, /data-layout-density="comfortable"/);
+    assert.match(html, /data-layout-columns="3"/);
+    assert.match(html, /spec-bs-columns-3/);
+    assert.match(html, /spec-bs-collapse-stack/);
+    assert.match(html, /spec-bs-text-wrap/);
+  });
+
+  test("rejects unsupported adapters and unsupported bootstrap semantic details", () => {
+    assert.throws(
+      () => renderHtml(semanticSaasIr, { adapter: "tailwind" }),
+      (error) => {
+        assert.ok(error instanceof RenderHtmlError);
+        assert.equal(error.errors[0].code, "unsupported_adapter");
+        return true;
+      }
+    );
+
+    assert.throws(
+      () => renderHtml({
+        metadata: {
+          title: "Bad",
+          renderingTarget: {
+            target: "bootstrap-html",
+            resolvedTarget: "bootstrap-html"
+          }
+        },
+        screens: [
+          {
+            id: "home",
+            title: "Home",
+            shell: "app",
+            kind: "dashboard",
+            regions: [
+              {
+                id: "main",
+                title: "Main",
+                type: "content",
+                blocks: [
+                  {
+                    id: "chart",
+                    title: "Chart",
+                    type: "chart",
+                    layout: { padding: "giant" },
+                    items: [
+                      {
+                        id: "raw",
+                        type: "text",
+                        label: "Raw",
+                        props: { class: "btn btn-primary" }
+                      }
+                    ],
+                    actions: [
+                      {
+                        id: "launch",
+                        label: "Launch",
+                        type: "launch",
+                        target: "home"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            sections: [],
+            states: []
+          }
+        ]
+      }),
+      (error) => {
+        assert.ok(error instanceof RenderHtmlError);
+        assert.deepEqual(error.errors.map((item) => item.code), [
+          "unsupported_layout_control",
+          "unsupported_semantic_block",
+          "raw_implementation_detail",
+          "unsupported_interaction"
+        ]);
+        return true;
+      }
+    );
   });
 });

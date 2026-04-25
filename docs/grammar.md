@@ -8,6 +8,13 @@ Raw HTML, JSX, CSS classes, Tailwind utility strings, `<script>`, `<style>`, `cl
 
 ## Document Shape
 
+Spec UI supports two source modes:
+
+- Single-file mode for small prototypes, compatibility fixtures, and quick experiments.
+- Package mode for serious prototype loops that need separate files for screens, flows, content, layout, tokens, and acceptance feedback.
+
+Single-file mode remains the lightest path when one person can understand the whole prototype in one markdown file. Use package mode when multiple agents may edit the prototype, when UAT feedback needs to survive handoff, or when copy, layout, and flow changes should be reviewed independently.
+
 The first non-empty heading MUST be the document title:
 
 ```markdown
@@ -23,6 +30,107 @@ Optional vNext attributes:
 - `adapter`: `baseline`. This is the only supported adapter target for this change.
 
 Top-level prose before the first heading is ignored only if it is blank whitespace. Any non-empty content before `# Spec: <title>` is invalid.
+
+## Prototype Package Manifest
+
+Package mode uses a manifest named `prototype.md` as the only package entry point. The manifest declares package metadata and the ordered files to compile:
+
+```markdown
+# Prototype: Revenue Workspace [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- flows.md [role="flows" required="true"]
+- content.md [role="content" required="true"]
+- layout.md [role="layout" required="true"]
+- tokens.md [role="tokens" required="false"]
+- acceptance.md [role="acceptance" required="true"]
+```
+
+Supported manifest metadata:
+
+- `surface`: `app` or `marketing`.
+- `adapter`: `bootstrap-html` for package prototypes, or `baseline` for lightweight output. Package mode defaults to `bootstrap-html` when omitted.
+- `target`: `standalone-html`.
+- `fidelity`: `prototype`.
+
+Include rules:
+
+- Include paths are package-relative POSIX-style paths.
+- Include paths must stay inside the package directory.
+- Include order is the canonical merge order.
+- Only files listed in `prototype.md` participate in compilation.
+- Required includes must exist.
+- Optional includes may be omitted only when declared with `required="false"`.
+- Supported roles are `screens`, `flows`, `content`, `layout`, `tokens`, and `acceptance`.
+
+## Focused Package Files
+
+Package files are organization boundaries for users and agents. They compile into one semantic source model.
+
+- `screens.md` owns screens, regions, blocks, items, and states.
+- `flows.md` owns user-visible navigation paths, modal/drawer behavior, form transitions, tab selection, toggles, and state changes.
+- `content.md` owns reusable copy, sample data, pricing tiers, FAQ entries, testimonials, metrics, and table rows.
+- `layout.md` owns semantic layout controls for density, spacing, width, alignment, columns, responsive collapse, wrapping, and overflow.
+- `tokens.md` owns semantic tone, radius, density, and treatment controls.
+- `acceptance.md` owns UAT findings, notes, and structured invariants.
+
+### Package Flow Syntax
+
+```markdown
+## Flow: Primary Review [id="primary-review" start="executive-dashboard"]
+- Step: Open Pipeline [from="executive-dashboard" action="navigate:pipeline-review" to="pipeline-review"]
+- Step: Open Forecast Modal [from="pipeline-review" action="open-modal:forecast-modal" to="forecast-modal"]
+```
+
+Flow `from`, `to`, and action targets must resolve to known screens, states, blocks, or actions. The compiler preserves step order.
+
+### Package Content Syntax
+
+```markdown
+## Content: Opportunity Rows [id="opportunity-rows" type="table-rows"]
+- Row: Acme Expansion [stage="Commit" owner="Rae" value="$82k"]
+- Row: Northwind Pilot [stage="Best Case" owner="Ira" value="$41k"]
+```
+
+Screens and blocks may reference declared content records with semantic attributes such as `content="opportunity-rows"`. Missing content records fail validation.
+
+### Package Layout Syntax
+
+```markdown
+## Layout: Dashboard Density [target="screen:executive-dashboard"]
+- Control: density [value="compact"]
+- Control: padding [value="md"]
+- Control: collapse [value="stack" at="tablet"]
+- Control: overflow [value="contain"]
+```
+
+Supported layout controls are `gap`, `padding`, `density`, `width`, `align`, `columns`, `collapse`, `collapseAt`, `text`, and `overflow`. Values must come from finite semantic sets; raw CSS lengths, class names, and arbitrary values are invalid.
+
+### Package Token Syntax
+
+```markdown
+## Tokens: Theme [id="default"]
+- Tone: brand [value="blue"]
+- Radius: controls [value="sm"]
+- Density: interface [value="comfortable"]
+- Treatment: cards [value="outlined"]
+```
+
+Tokens are semantic knobs. Raw CSS variables, raw color values, Bootstrap classes, Tailwind utilities, and arbitrary component-library tokens are invalid.
+
+### Package Acceptance Syntax
+
+```markdown
+## Acceptance
+- Invariant: Stable navigation labels [target="block:primary-nav"]
+- Invariant: Single modal stack [target="screen:*"]
+- Invariant: Reachable flow [target="flow:primary-review"]
+- Invariant: Overflow containment [target="screen:executive-dashboard"]
+- Note: Long account names must wrap inside cards without spilling.
+```
+
+Acceptance notes capture UAT feedback as durable prototype constraints. Structured invariants preserve the invariant name, target, source file, and line for tests and future agents.
 
 ## Foundation Screens And Sections
 
@@ -342,6 +450,32 @@ The following are invalid in canonical source:
 - Unknown surface, shell, screen kind, region, block, item, state, action, variant, or adapter values.
 
 Spec UI favors validation errors over guessing. If a semantic value is not listed in this document, it belongs in a future OpenSpec change.
+
+## Prototype Package Loop
+
+The package loop keeps the markdown source of truth ahead of renderer tweaks:
+
+1. Edit the role file that matches the requested change.
+2. Compile the manifest or package directory.
+3. Inspect the generated standalone HTML in a browser or Micro Canvas.
+4. Record UAT findings and durable constraints in `acceptance.md`.
+5. Repeat until the package reaches acceptance.
+
+Agents should prefer the smallest role-file edit that expresses the user request. Copy changes usually belong in `content.md`, navigation and interaction changes in `flows.md`, screen structure in `screens.md`, spacing and responsive behavior in `layout.md`, visual tone in `tokens.md`, and inspection feedback in `acceptance.md`.
+
+## OpenSpec Workflow Comparison
+
+Prototype packages borrow OpenSpec's workflow discipline without becoming OpenSpec changes:
+
+- The manifest is the package entry point, like a small workflow descriptor.
+- Include records declare artifact dependencies instead of relying on directory globbing.
+- Package status should report ready, blocked, or invalid inputs before rendering.
+- Role-specific instructions tell agents which file to edit for a user request.
+- Strict validation rejects missing includes, unsupported roles, unresolved references, and raw implementation details.
+- `acceptance.md` is the prototype equivalent of durable scenarios and UAT notes.
+- Handoff metadata should preserve source mode, manifest path, package files, adapter identity, and acceptance summary for archive-style review.
+
+Unlike OpenSpec, prototype packages are product UI source documents. They do not use delta sections, change IDs, or spec archive semantics as their canonical domain model.
 
 ## Minimal Foundation Spec
 

@@ -1,0 +1,7 @@
+## Tokens: Workspace Theme [id="workspace-theme"]
+- Tone: brand [value="blue"]
+- Tone: success [value="green"]
+- Tone: critical [value="red"]
+- Radius: controls [value="sm"]
+- Density: interface [value="compact"]
+- Treatment: cards [value="outlined"]

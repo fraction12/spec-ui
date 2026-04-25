@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import { createHandoffResult } from "../src/handoff.js";
 import { renderHtml } from "../src/render-html.js";
@@ -21,8 +21,26 @@ async function main(argv) {
 
   try {
     const compiler = await loadCompiler();
-    const markdown = await readFile(options.inputPath, "utf8");
-    const ir = compiler.compileToIr(markdown);
+    const input = await readCompileInput(options.inputPath, compiler);
+
+    if (options.status) {
+      if (input.sourceMode !== "package") {
+        process.stdout.write(`${JSON.stringify({
+          sourceMode: "single-file",
+          inputPath: options.inputPath,
+          readiness: "ready"
+        }, null, 2)}\n`);
+        return 0;
+      }
+
+      const status = compiler.getPackageStatus(input.packageInput);
+      process.stdout.write(`${JSON.stringify(status, null, 2)}\n`);
+      return status.readiness === "ready" ? 0 : 1;
+    }
+
+    const ir = input.sourceMode === "package"
+      ? compiler.compilePackageToIr(input.packageInput)
+      : compiler.compileToIr(input.markdown);
     const html = renderHtml(ir);
 
     await writeArtifact(options.outputPath, html);
@@ -57,6 +75,7 @@ function parseCompileArgs(args) {
     inputPath: undefined,
     outputPath: undefined,
     irPath: undefined,
+    status: false,
     errors: []
   };
 
@@ -76,6 +95,10 @@ function parseCompileArgs(args) {
       index += 1;
       continue;
     }
+    if (arg === "--status") {
+      result.status = true;
+      continue;
+    }
     result.errors.push({
       code: "unknown_argument",
       message: `Unknown argument "${arg}".`
@@ -89,7 +112,7 @@ function parseCompileArgs(args) {
     });
   }
 
-  if (!result.outputPath) {
+  if (!result.outputPath && !result.status) {
     result.errors.push({
       code: "missing_output",
       message: "compile requires --out <output.html>."
@@ -102,6 +125,56 @@ function parseCompileArgs(args) {
 async function loadCompiler() {
   const modulePath = process.env.SPEC_UI_COMPILER_MODULE || "../src/compiler.js";
   return import(modulePath);
+}
+
+async function readCompileInput(inputPath, compiler) {
+  const stats = await stat(inputPath);
+  const manifestPath = stats.isDirectory() ? join(inputPath, "prototype.md") : inputPath;
+  const markdown = await readFile(manifestPath, "utf8");
+  const isPackage = stats.isDirectory() ||
+    basename(manifestPath) === "prototype.md" ||
+    markdown.trimStart().startsWith("# Prototype:");
+
+  if (!isPackage) {
+    return {
+      sourceMode: "single-file",
+      markdown
+    };
+  }
+
+  if (typeof compiler.parsePackageManifest !== "function" ||
+      typeof compiler.compilePackageToIr !== "function") {
+    throw new Error("Loaded compiler module does not support package compilation.");
+  }
+
+  const packageRoot = dirname(manifestPath);
+  const manifest = compiler.parsePackageManifest(markdown, {
+    manifestPath,
+    packageRoot
+  });
+  const files = [];
+
+  for (const include of manifest.includes ?? []) {
+    if (!include.insideRoot) continue;
+    try {
+      files.push({
+        path: include.path,
+        contents: await readFile(include.absolutePath, "utf8")
+      });
+    } catch {
+      // Missing required includes are reported by the compiler/status model.
+    }
+  }
+
+  return {
+    sourceMode: "package",
+    packageInput: {
+      manifestPath,
+      packageRoot,
+      manifestMarkdown: markdown,
+      files
+    }
+  };
 }
 
 async function writeArtifact(path, contents) {
@@ -128,7 +201,7 @@ function printJsonError(errors) {
 
 function printUsage() {
   process.stderr.write(
-    "Usage: spec-ui compile <input.md> --out <output.html> [--ir <output.json>]\n"
+    "Usage: spec-ui compile <input.md|package-dir> --out <output.html> [--ir <output.json>] [--status]\n"
   );
 }
 

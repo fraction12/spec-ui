@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -140,5 +140,115 @@ describe("spec-ui compile CLI", () => {
         { code: "missing_screen", message: "Screen is required.", line: 1 }
       ]
     });
+  });
+
+  test("compiles package directories and exposes package status", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spec-ui-cli-package-"));
+    const packageDir = join(dir, "revenue-workspace");
+    const outputPath = join(dir, "prototype.html");
+    const irPath = join(dir, "prototype.ir.json");
+    await mkdir(packageDir);
+    await writeFile(join(packageDir, "prototype.md"), `# Prototype: CLI Package [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- flows.md [role="flows" required="true"]
+- content.md [role="content" required="true"]
+- layout.md [role="layout" required="true"]
+- tokens.md [role="tokens" required="true"]
+- acceptance.md [role="acceptance" required="true"]
+`);
+    await writeFile(join(packageDir, "screens.md"), `## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Metrics [id="metrics" type="metric-row" gap="md" content="metric-data"]
+`);
+    await writeFile(join(packageDir, "flows.md"), `## Flow: Primary [id="primary" start="dashboard"]
+- Step: Stay [from="dashboard" action="navigate:dashboard" to="dashboard"]
+`);
+    await writeFile(join(packageDir, "content.md"), `## Content: Metric Data [id="metric-data" type="metrics"]
+- Metric: Pipeline [value="$8.6M" tone="positive"]
+`);
+    await writeFile(join(packageDir, "layout.md"), `## Layout: Metrics [target="block:metrics"]
+- Control: density [value="compact"]
+`);
+    await writeFile(join(packageDir, "tokens.md"), `## Tokens: Theme [id="default"]
+- Tone: brand [value="blue"]
+`);
+    await writeFile(join(packageDir, "acceptance.md"), `## Acceptance
+- Invariant: Reachable flow [target="flow:primary"]
+`);
+
+    const status = spawnSync(
+      process.execPath,
+      [cliPath, "compile", packageDir, "--status"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+
+    assert.equal(status.status, 0, status.stderr);
+    const statusJson = JSON.parse(status.stdout);
+    assert.equal(statusJson.readiness, "ready");
+    assert.equal(statusJson.sourceMode, "package");
+    assert.equal(statusJson.acceptance.invariantCount, 1);
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "compile", packageDir, "--out", outputPath, "--ir", irPath],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const handoff = JSON.parse(result.stdout);
+    assert.equal(handoff.sourceMode, "package");
+    assert.equal(handoff.package.title, "CLI Package");
+    assert.equal(handoff.adapter.target, "bootstrap-html");
+    assert.equal(handoff.resolvedLibrary.name, "bootstrap");
+    assert.equal(handoff.packageReadiness.readiness, "ready");
+
+    const ir = JSON.parse(await readFile(irPath, "utf8"));
+    assert.equal(ir.metadata.sourceMode, "package");
+    assert.equal(ir.screens[0].regions[0].blocks[0].items[0].source.role, "content");
+    assert.match(await readFile(outputPath, "utf8"), /CLI Package/);
+  });
+
+  test("rejects duplicate package ids across screen and content role files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spec-ui-cli-package-"));
+    const packageDir = join(dir, "duplicate-package");
+    await mkdir(packageDir);
+    await writeFile(join(packageDir, "prototype.md"), `# Prototype: Duplicate Package [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- content.md [role="content" required="true"]
+`);
+    await writeFile(join(packageDir, "screens.md"), `## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Shared Card [id="shared-card" type="detail-panel" gap="md" content="shared-card"]
+`);
+    await writeFile(join(packageDir, "content.md"), `## Content: Shared Card [id="shared-card" type="copy"]
+- Text: Duplicate content id.
+`);
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "compile", packageDir, "--status"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    const status = JSON.parse(result.stdout);
+    assert.equal(status.readiness, "invalid");
+    assert.deepEqual(
+      status.validationErrors.map((error) => error.code),
+      ["duplicate_package_id"]
+    );
   });
 });

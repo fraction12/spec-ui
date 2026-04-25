@@ -4,6 +4,7 @@ import {
 } from "./contracts.js";
 
 const SPEC_RE = /^# Spec:\s*(.+?)\s*$/;
+const PROTOTYPE_RE = /^# Prototype:\s*(.+?)\s*$/;
 const SCREEN_RE = /^## Screen:\s*(.+?)\s*$/;
 const SECTION_RE = /^### Section:\s*(.+?)\s*$/;
 const REGION_RE = /^### Region:\s*(.+?)\s*$/;
@@ -11,20 +12,38 @@ const BLOCK_RE = /^#### Block:\s*(.+?)\s*$/;
 const STATE_RE = /^#### State:\s*(.+?)\s*$/;
 const BLOCK_STATE_RE = /^##### State:\s*(.+?)\s*$/;
 const ITEM_RE = /^-\s*([A-Za-z][A-Za-z0-9-]*)#([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.+?)\s*$/;
+const INCLUDE_RE = /^-\s*(.+?)\s*$/;
+const FLOW_RE = /^## Flow:\s*(.+?)\s*$/;
+const FLOW_STEP_RE = /^-\s*Step:\s*(.+?)\s*$/;
+const CONTENT_RE = /^## Content:\s*(.+?)\s*$/;
+const CONTENT_ITEM_RE = /^-\s*([A-Za-z][A-Za-z0-9-]*):\s*(.+?)\s*$/;
+const LAYOUT_RE = /^## Layout:\s*(.+?)\s*$/;
+const LAYOUT_CONTROL_RE = /^-\s*Control:\s*([A-Za-z][A-Za-z0-9-]*)\s*(?:\[(.*?)\])?\s*$/;
+const TOKENS_RE = /^## Tokens:\s*(.+?)\s*$/;
+const TOKEN_RE = /^-\s*(Tone|Radius|Density|Treatment):\s*(.+?)\s*$/;
+const ACCEPTANCE_RE = /^## Acceptance\s*$/;
+const ACCEPTANCE_ITEM_RE = /^-\s*(Invariant|Note):\s*(.+?)\s*$/;
 
-export function parseSpec(markdown) {
+export function parseSpec(markdown, options = {}) {
   const source = {
-    title: "",
-    attrs: {},
+    title: options.title ?? "",
+    attrs: options.attrs ?? {},
     line: undefined,
     screens: [],
     errors: []
   };
 
+  if (options.sourceMode) source.sourceMode = options.sourceMode;
+  if (options.sourceFile) source.sourceFile = options.sourceFile;
+  if (options.sourceRole) source.sourceRole = options.sourceRole;
+  if (options.surface) source.surface = options.surface;
+  if (options.adapter) source.adapter = options.adapter;
+
   const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
   const firstContent = lines.findIndex((line) => line.trim() !== "");
+  const requireSpecTitle = options.requireSpecTitle !== false;
 
-  if (firstContent >= 0) {
+  if (firstContent >= 0 && requireSpecTitle) {
     const firstLine = lines[firstContent].trim();
     const spec = parseHeading(firstLine, SPEC_RE);
     if (spec) {
@@ -40,6 +59,8 @@ export function parseSpec(markdown) {
         line: firstContent + 1
       });
     }
+  } else if (firstContent >= 0) {
+    source.line = firstContent + 1;
   }
 
   let currentScreen = null;
@@ -82,7 +103,7 @@ export function parseSpec(markdown) {
         shell: screen.attrs.shell,
         kind: screen.attrs.kind,
         attrs: screen.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         regions: [],
         sections: [],
         states: []
@@ -117,7 +138,7 @@ export function parseSpec(markdown) {
         type: region.attrs.type ?? "",
         title: region.title,
         attrs: region.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         blocks: []
       };
       currentScreen.regions.push(currentRegion);
@@ -148,7 +169,7 @@ export function parseSpec(markdown) {
         id: section.attrs.id ?? "",
         title: section.title,
         attrs: section.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         elements: [],
         actions: [],
         blocks: []
@@ -181,7 +202,7 @@ export function parseSpec(markdown) {
         variant: block.attrs.variant,
         title: block.title,
         attrs: block.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         items: [],
         actions: [],
         states: []
@@ -215,7 +236,7 @@ export function parseSpec(markdown) {
         type: blockState.attrs.type ?? "default",
         label: blockState.title,
         attrs: blockState.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         items: [],
         actions: []
       };
@@ -245,7 +266,7 @@ export function parseSpec(markdown) {
         type: state.attrs.type ?? "default",
         label: state.title,
         attrs: state.attrs,
-        line: lineNumber,
+        ...sourceLocation(lineNumber, options),
         items: []
       };
       currentScreen.states.push(currentState);
@@ -256,7 +277,7 @@ export function parseSpec(markdown) {
       return;
     }
 
-    const item = parseItem(line, lineNumber);
+    const item = parseItem(line, lineNumber, options);
     if (item) {
       if (currentBlockState) {
         appendSemanticItem(currentBlockState, item);
@@ -300,6 +321,164 @@ export function parseSpec(markdown) {
   return source;
 }
 
+export function parsePrototypeManifest(markdown, options = {}) {
+  const manifestPath = options.manifestPath ?? "prototype.md";
+  const sourceFile = options.sourceFile ?? manifestPath;
+  const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const firstContent = lines.findIndex((line) => line.trim() !== "");
+  const manifest = {
+    title: "",
+    attrs: {},
+    surface: undefined,
+    adapter: "bootstrap-html",
+    target: "standalone-html",
+    fidelity: "prototype",
+    line: undefined,
+    sourceFile,
+    includes: [],
+    sourceHashInputs: [manifestPath],
+    errors: []
+  };
+
+  if (firstContent < 0) {
+    manifest.errors.push({
+      code: "missing_package_manifest",
+      message: 'Package manifest must start with "# Prototype: <title>".',
+      line: 1,
+      sourceFile
+    });
+    return manifest;
+  }
+
+  const prototype = parseHeading(lines[firstContent].trim(), PROTOTYPE_RE);
+  if (!prototype) {
+    manifest.errors.push({
+      code: "missing_package_manifest",
+      message: 'Package manifest must start with "# Prototype: <title>".',
+      line: firstContent + 1,
+      sourceFile
+    });
+  } else {
+    manifest.title = prototype.title;
+    manifest.attrs = prototype.attrs;
+    manifest.surface = prototype.attrs.surface;
+    manifest.adapter = prototype.attrs.adapter ?? manifest.adapter;
+    manifest.target = prototype.attrs.target ?? manifest.target;
+    manifest.fidelity = prototype.attrs.fidelity ?? manifest.fidelity;
+    manifest.line = firstContent + 1;
+  }
+
+  let inIncludes = false;
+
+  lines.forEach((rawLine, index) => {
+    const lineNumber = index + 1;
+    const line = rawLine.trim();
+
+    if (line === "" || line.match(PROTOTYPE_RE)) return;
+
+    if (line === "Includes:" || line === "## Includes") {
+      inIncludes = true;
+      return;
+    }
+
+    if (inIncludes && line.startsWith("#")) {
+      inIncludes = false;
+      return;
+    }
+
+    if (!inIncludes) return;
+
+    const include = line.match(INCLUDE_RE);
+    if (!include) return;
+
+    const { text, attrs } = extractAttrs(include[1]);
+    const includePath = text.trim();
+    const record = {
+      path: includePath,
+      role: attrs.role ?? inferRoleFromPath(includePath),
+      required: attrs.required !== "false",
+      attrs,
+      line: lineNumber,
+      sourceFile
+    };
+    manifest.includes.push(record);
+    manifest.sourceHashInputs.push(includePath);
+  });
+
+  return manifest;
+}
+
+export function parsePackageRoleFile(markdown, options = {}) {
+  if (options.role === "screens") {
+    return parseSpec(markdown, {
+      title: options.title,
+      attrs: options.attrs,
+      surface: options.surface,
+      adapter: options.adapter,
+      requireSpecTitle: false,
+      sourceMode: "package",
+      sourceFile: options.sourceFile,
+      sourceRole: "screens"
+    });
+  }
+
+  const role = options.role;
+  const parsed = {
+    role,
+    sourceFile: options.sourceFile,
+    errors: []
+  };
+
+  const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
+  let current = null;
+
+  for (const [index, rawLine] of lines.entries()) {
+    const lineNumber = index + 1;
+    const line = rawLine.trim();
+
+    if (line === "") continue;
+
+    if (RESERVED_HTML_PATTERN.test(line)) {
+      parsed.errors.push(rawHtmlError(lineNumber, options));
+      continue;
+    }
+
+    if (IMPLEMENTATION_DETAIL_PATTERN.test(line)) {
+      parsed.errors.push(implementationDetailError(lineNumber, options));
+      continue;
+    }
+
+    if (role === "flows") {
+      current = parseFlowLine(parsed, current, line, lineNumber, options);
+      continue;
+    }
+
+    if (role === "content") {
+      current = parseContentLine(parsed, current, line, lineNumber, options);
+      continue;
+    }
+
+    if (role === "layout") {
+      current = parseLayoutLine(parsed, current, line, lineNumber, options);
+      continue;
+    }
+
+    if (role === "tokens") {
+      current = parseTokenLine(parsed, current, line, lineNumber, options);
+      continue;
+    }
+
+    if (role === "acceptance") {
+      current = parseAcceptanceLine(parsed, current, line, lineNumber, options);
+      continue;
+    }
+
+    parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  }
+
+  return parsed;
+}
+
 function parseHeading(line, regex) {
   const match = line.match(regex);
   if (!match) return null;
@@ -311,7 +490,7 @@ function parseHeading(line, regex) {
   };
 }
 
-function parseItem(line, lineNumber) {
+function parseItem(line, lineNumber, options = {}) {
   const match = line.match(ITEM_RE);
   if (!match) return null;
 
@@ -321,7 +500,7 @@ function parseItem(line, lineNumber) {
     id: match[2],
     label: text,
     attrs,
-    line: lineNumber
+    ...sourceLocation(lineNumber, options)
   };
 }
 
@@ -340,7 +519,7 @@ function extractAttrs(value) {
   };
 }
 
-function parseAttrs(block) {
+export function parseAttrs(block) {
   const inner = block.slice(1, -1).trim();
   const attrs = {};
 
@@ -363,7 +542,7 @@ function toElement(item) {
     type: item.type,
     label: item.label,
     props: {},
-    line: item.line
+    ...copySourceLocation(item)
   };
 
   for (const [key, value] of Object.entries(item.attrs)) {
@@ -383,7 +562,7 @@ function toAction(item) {
     label: item.label,
     type: item.attrs.type ?? "",
     target: item.attrs.target ?? "",
-    line: item.line
+    ...copySourceLocation(item)
   };
 }
 
@@ -407,5 +586,210 @@ function parseActionValue(value) {
   return {
     type: type ?? "",
     target: targetParts.join(":")
+  };
+}
+
+function parseFlowLine(parsed, current, line, lineNumber, options) {
+  const flow = parseHeading(line, FLOW_RE);
+  if (flow) {
+    const record = {
+      id: flow.attrs.id ?? "",
+      title: flow.title,
+      start: flow.attrs.start ?? "",
+      attrs: flow.attrs,
+      ...sourceLocation(lineNumber, options),
+      steps: []
+    };
+    parsed.flows ??= [];
+    parsed.flows.push(record);
+    return record;
+  }
+
+  const step = parseHeading(line, FLOW_STEP_RE);
+  if (step && current) {
+    current.steps.push({
+      label: step.title,
+      from: step.attrs.from ?? "",
+      action: step.attrs.action ?? "",
+      to: step.attrs.to ?? "",
+      attrs: step.attrs,
+      ...sourceLocation(lineNumber, options)
+    });
+    return current;
+  }
+
+  parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  return current;
+}
+
+function parseContentLine(parsed, current, line, lineNumber, options) {
+  const content = parseHeading(line, CONTENT_RE);
+  if (content) {
+    const record = {
+      id: content.attrs.id ?? "",
+      type: content.attrs.type ?? "",
+      title: content.title,
+      attrs: content.attrs,
+      ...sourceLocation(lineNumber, options),
+      records: []
+    };
+    parsed.contentRecords ??= [];
+    parsed.contentRecords.push(record);
+    return record;
+  }
+
+  const item = line.match(CONTENT_ITEM_RE);
+  if (item && current) {
+    const { text, attrs } = extractAttrs(item[2]);
+    current.records.push({
+      kind: item[1],
+      label: text,
+      attrs,
+      ...sourceLocation(lineNumber, options)
+    });
+    return current;
+  }
+
+  parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  return current;
+}
+
+function parseLayoutLine(parsed, current, line, lineNumber, options) {
+  const layout = parseHeading(line, LAYOUT_RE);
+  if (layout) {
+    const record = {
+      title: layout.title,
+      target: layout.attrs.target ?? "",
+      attrs: layout.attrs,
+      ...sourceLocation(lineNumber, options),
+      controls: []
+    };
+    parsed.layout ??= [];
+    parsed.layout.push(record);
+    return record;
+  }
+
+  const control = line.match(LAYOUT_CONTROL_RE);
+  if (control && current) {
+    current.controls.push({
+      name: control[1],
+      attrs: control[2] ? parseAttrs(`[${control[2]}]`) : {},
+      ...sourceLocation(lineNumber, options)
+    });
+    return current;
+  }
+
+  parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  return current;
+}
+
+function parseTokenLine(parsed, current, line, lineNumber, options) {
+  const tokens = parseHeading(line, TOKENS_RE);
+  if (tokens) {
+    const record = {
+      id: tokens.attrs.id ?? "",
+      title: tokens.title,
+      attrs: tokens.attrs,
+      ...sourceLocation(lineNumber, options),
+      controls: []
+    };
+    parsed.tokens ??= [];
+    parsed.tokens.push(record);
+    return record;
+  }
+
+  const token = line.match(TOKEN_RE);
+  if (token && current) {
+    const { text, attrs } = extractAttrs(token[2]);
+    current.controls.push({
+      name: token[1].toLowerCase(),
+      target: attrs.target ?? text,
+      attrs,
+      ...sourceLocation(lineNumber, options)
+    });
+    return current;
+  }
+
+  parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  return current;
+}
+
+function parseAcceptanceLine(parsed, current, line, lineNumber, options) {
+  if (line.match(ACCEPTANCE_RE)) {
+    parsed.acceptance = {
+      ...sourceLocation(lineNumber, options),
+      invariants: [],
+      notes: []
+    };
+    return parsed.acceptance;
+  }
+
+  const item = line.match(ACCEPTANCE_ITEM_RE);
+  if (item && current) {
+    const { text, attrs } = extractAttrs(item[2]);
+    const record = {
+      name: text,
+      target: attrs.target ?? "",
+      attrs,
+      ...sourceLocation(lineNumber, options)
+    };
+
+    if (item[1] === "Invariant") {
+      current.invariants.push(record);
+    } else {
+      current.notes.push(record);
+    }
+    return current;
+  }
+
+  parsed.errors.push(unrecognizedPackageLine(lineNumber, options));
+  return current;
+}
+
+function sourceLocation(lineNumber, options = {}) {
+  const location = { line: lineNumber };
+
+  if (options.sourceFile) location.sourceFile = options.sourceFile;
+  if (options.sourceRole) location.sourceRole = options.sourceRole;
+  if (options.sourceFile || options.sourceRole) location.sourceLine = lineNumber;
+
+  return location;
+}
+
+function copySourceLocation(node) {
+  const location = { line: node.line };
+
+  if (node.sourceFile) location.sourceFile = node.sourceFile;
+  if (node.sourceRole) location.sourceRole = node.sourceRole;
+  if (node.sourceLine) location.sourceLine = node.sourceLine;
+
+  return location;
+}
+
+function inferRoleFromPath(includePath) {
+  return includePath.replace(/^.*\//, "").replace(/\.md$/i, "");
+}
+
+function rawHtmlError(lineNumber, options) {
+  return {
+    code: "raw_html",
+    message: "Raw HTML is not supported in Spec UI markdown.",
+    ...sourceLocation(lineNumber, options)
+  };
+}
+
+function implementationDetailError(lineNumber, options) {
+  return {
+    code: "implementation_detail",
+    message: "Raw CSS, JSX, scripts, styles, or component markup are not supported in Spec UI markdown.",
+    ...sourceLocation(lineNumber, options)
+  };
+}
+
+function unrecognizedPackageLine(lineNumber, options) {
+  return {
+    code: "unrecognized_package_structure",
+    message: "Line does not match supported prototype package markdown structure.",
+    ...sourceLocation(lineNumber, options)
   };
 }

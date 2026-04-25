@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, test } from "node:test";
 
 import { parseSpec } from "../src/parser.js";
-import { validateSource } from "../src/validation.js";
+import { detectSourceInput, loadPackageSource } from "../src/package-source.js";
+import { getPackageStatus, validateSource } from "../src/validation.js";
 
 const validSpec = `# Spec: Task Board
 
@@ -426,3 +429,222 @@ describe("validateSource", () => {
     }
   });
 });
+
+describe("prototype package parsing and validation", () => {
+  test("detects package inputs and preserves package role source metadata", () => {
+    const packageDir = writePackage({
+      "prototype.md": `# Prototype: Revenue Workspace [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- flows.md [role="flows" required="true"]
+- content.md [role="content" required="true"]
+- layout.md [role="layout" required="true"]
+- tokens.md [role="tokens" required="false"]
+- acceptance.md [role="acceptance" required="true"]
+`,
+      "screens.md": `## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Sidebar [id="sidebar" type="sidebar" gap="md"]
+#### Block: Navigation [id="primary-nav" type="nav" gap="sm"]
+- nav-item#navPipeline: Pipeline [action="navigate:pipeline-review"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Metrics [id="metrics" type="metric-row" gap="md" content="opportunity-rows"]
+- metric#pipelineValue: Pipeline [value="$123k"]
+
+## Screen: Pipeline Review [id="pipeline-review" shell="app" kind="list" gap="md"]
+### Region: Main [id="pipeline-main" type="content" gap="md"]
+#### Block: Forecast [id="forecast" type="data-table" gap="md"]
+- action#openForecast: Open forecast [type="open-modal" target="forecast-modal"]
+##### State: Forecast Modal [id="forecast-modal" type="modal"]
+- text#forecastCopy: Review commit movement
+`,
+      "flows.md": `## Flow: Primary Review [id="primary-review" start="dashboard"]
+- Step: Open Pipeline [from="dashboard" action="navigate:pipeline-review" to="pipeline-review"]
+- Step: Open Forecast Modal [from="pipeline-review" action="open-modal:forecast-modal" to="forecast-modal"]
+`,
+      "content.md": `## Content: Opportunity Rows [id="opportunity-rows" type="table-rows"]
+- Row: Acme Expansion [stage="Commit" owner="Rae" value="$82k"]
+- Row: Northwind Pilot [stage="Best Case" owner="Ira" value="$41k"]
+`,
+      "layout.md": `## Layout: Dashboard Density [target="screen:dashboard"]
+- Control: gap [value="md"]
+- Control: padding [value="md"]
+- Control: density [value="compact"]
+- Control: width [value="wide"]
+- Control: align [value="start"]
+- Control: columns [value="2"]
+- Control: collapse [value="stack" at="tablet"]
+- Control: text [value="wrap"]
+- Control: overflow [value="contain"]
+`,
+      "tokens.md": `## Tokens: Theme [id="default-theme"]
+- Tone: brand [value="blue"]
+- Radius: controls [value="sm"]
+- Density: interface [value="compact"]
+- Treatment: cards [value="outlined"]
+`,
+      "acceptance.md": `## Acceptance
+- Invariant: Stable navigation labels [target="block:primary-nav"]
+- Invariant: Single modal stack [target="screen:*"]
+- Invariant: Reachable flow [target="flow:primary-review"]
+- Note: Long account names must wrap inside cards without spilling.
+`
+    });
+
+    try {
+      assert.equal(detectSourceInput(packageDir).sourceMode, "package");
+      assert.equal(
+        detectSourceInput(path.join(packageDir, "prototype.md")).sourceMode,
+        "package"
+      );
+      assert.equal(
+        detectSourceInput(path.join(packageDir, "screens.md")).sourceMode,
+        "single-file"
+      );
+
+      const source = loadPackageSource(packageDir);
+      assert.equal(source.sourceMode, "package");
+      assert.equal(source.title, "Revenue Workspace");
+      assert.equal(source.adapter, "bootstrap-html");
+      assert.deepEqual(source.package.includes.map((include) => include.role), [
+        "screens",
+        "flows",
+        "content",
+        "layout",
+        "tokens",
+        "acceptance"
+      ]);
+
+      assert.equal(source.screens[0].sourceFile, "screens.md");
+      assert.equal(source.screens[0].sourceRole, "screens");
+      assert.equal(source.screens[0].sourceLine, 1);
+      assert.equal(source.flows[0].steps[1].sourceFile, "flows.md");
+      assert.equal(source.contentRecords[0].records[0].sourceRole, "content");
+      assert.equal(source.layout[0].controls[0].sourceRole, "layout");
+      assert.equal(source.tokens[0].controls[0].sourceRole, "tokens");
+      assert.equal(source.acceptance.invariants[0].sourceRole, "acceptance");
+
+      assert.deepEqual(validateSource(source), []);
+      assert.deepEqual(getPackageStatus(source), {
+        sourceMode: "package",
+        title: "Revenue Workspace",
+        manifestPath: path.join(packageDir, "prototype.md"),
+        adapter: "bootstrap-html",
+        fidelity: "prototype",
+        includedFiles: [
+          includeStatus("screens.md", "screens", true, "parsed", 4),
+          includeStatus("flows.md", "flows", true, "parsed", 5),
+          includeStatus("content.md", "content", true, "parsed", 6),
+          includeStatus("layout.md", "layout", true, "parsed", 7),
+          includeStatus("tokens.md", "tokens", false, "parsed", 8),
+          includeStatus("acceptance.md", "acceptance", true, "parsed", 9)
+        ],
+        missingIncludes: [],
+        validationErrors: [],
+        acceptanceInvariantCount: 3,
+        readiness: "ready"
+      });
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports stable package validation codes and blocked status", () => {
+    const packageDir = writePackage({
+      "prototype.md": `# Prototype: Broken [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype" assetProvenance="cdn"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- missing.md [role="content" required="true"]
+- ../outside.md [role="layout" required="true"]
+- mystery.md [role="mystery" required="true"]
+- flows.md [role="flows" required="true"]
+- content.md [role="content" required="true"]
+- layout.md [role="layout" required="true"]
+- tokens.md [role="tokens" required="true"]
+- acceptance.md [role="acceptance" required="true"]
+`,
+      "screens.md": `## Screen: Dashboard [id="dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Main [id="main" type="content" gap="md"]
+#### Block: Metrics [id="metrics" type="metric-row" gap="md" content="missing-content"]
+- metric#pipelineValue: Pipeline [value="$123k"]
+`,
+      "mystery.md": "## Mystery\n",
+      "flows.md": `## Flow: Missing Path [id="missing-path" start="dashboard"]
+- Step: Missing target [from="dashboard" action="navigate:not-a-screen" to="not-a-screen"]
+`,
+      "content.md": `## Content: Duplicate Dashboard [id="dashboard" type="table-rows"]
+- Row: Acme [stage="Commit"]
+`,
+      "layout.md": `## Layout: Missing Target [target="block:not-found"]
+- Control: density [value="tiny"]
+`,
+      "tokens.md": `## Tokens: Theme [id="theme"]
+- Tone: brand [value="#0055ff"]
+`,
+      "acceptance.md": `## Acceptance
+- Invariant: Missing flow [target="flow:not-found"]
+`
+    });
+
+    try {
+      const source = loadPackageSource(packageDir);
+      const codes = validateSource(source).map((error) => error.code);
+
+      assert.ok(codes.includes("missing_package_include"));
+      assert.ok(codes.includes("package_include_outside_root"));
+      assert.ok(codes.includes("unsupported_package_role"));
+      assert.ok(codes.includes("duplicate_package_id"));
+      assert.ok(codes.includes("unresolved_content_reference"));
+      assert.ok(codes.includes("unresolved_layout_target"));
+      assert.ok(codes.includes("unresolved_flow_target"));
+      assert.ok(codes.includes("unsupported_layout_control"));
+      assert.ok(codes.includes("unsupported_token_control"));
+      assert.ok(codes.includes("adapter_asset_provenance_unknown"));
+
+      const status = getPackageStatus(source);
+      assert.equal(status.readiness, "blocked");
+      assert.equal(status.acceptanceInvariantCount, 1);
+      assert.deepEqual(status.missingIncludes, ["missing.md"]);
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports missing manifests for package directories", () => {
+    const packageDir = mkdtempSync(path.join(tmpdir(), "spec-ui-package-"));
+
+    try {
+      const source = loadPackageSource(packageDir);
+      const errors = validateSource(source);
+
+      assert.equal(source.sourceMode, "package");
+      assert.equal(errors[0].code, "missing_package_manifest");
+      assert.equal(getPackageStatus(source).readiness, "invalid");
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
+  });
+});
+
+function writePackage(files) {
+  const packageDir = mkdtempSync(path.join(tmpdir(), "spec-ui-package-"));
+
+  for (const [filePath, content] of Object.entries(files)) {
+    writeFileSync(path.join(packageDir, filePath), content);
+  }
+
+  return packageDir;
+}
+
+function includeStatus(filePath, role, required, parseStatus, line) {
+  return {
+    path: filePath,
+    role,
+    required,
+    exists: true,
+    parseStatus,
+    sourceFile: "prototype.md",
+    line
+  };
+}
