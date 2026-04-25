@@ -3,9 +3,11 @@ import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 
 import {
+  compilePackageToIr,
   compileSourceToIr,
   compileToIr,
   CompilationError,
+  getPackageStatus,
   serializeIr
 } from "../src/compiler.js";
 import { createHandoffResult } from "../src/handoff.js";
@@ -30,6 +32,22 @@ const validSpec = `# Spec: Task Board
 
 const sourceHash = (markdown) =>
   createHash("sha256").update(markdown).digest("hex");
+
+const baselineMetadata = {
+  adapter: {
+    target: "baseline",
+    version: SPEC_UI_VERSION,
+    resolvedTarget: "baseline"
+  },
+  resolvedLibrary: {
+    name: "spec-ui-baseline",
+    version: SPEC_UI_VERSION
+  },
+  assetProvenance: {
+    mode: "inline",
+    source: "spec-ui-render-html"
+  }
+};
 
 const saasMarkdown = `# Spec: SaaS Ops [surface="app" adapter="baseline"]`;
 const saasSource = {
@@ -212,6 +230,74 @@ const marketingSource = {
   ]
 };
 
+const packageInput = {
+  manifestPath: "/tmp/revenue-workspace/prototype.md",
+  packageRoot: "/tmp/revenue-workspace",
+  manifestMarkdown: `# Prototype: Revenue Workspace [surface="app" adapter="bootstrap-html" target="standalone-html" fidelity="prototype"]
+
+Includes:
+- screens.md [role="screens" required="true"]
+- flows.md [role="flows" required="true"]
+- content.md [role="content" required="true"]
+- layout.md [role="layout" required="true"]
+- tokens.md [role="tokens" required="true"]
+- acceptance.md [role="acceptance" required="true"]
+`,
+  files: [
+    {
+      path: "screens.md",
+      contents: `## Screen: Executive Dashboard [id="executive-dashboard" shell="app" kind="dashboard" gap="md"]
+### Region: Workspace [id="workspace" type="content" gap="md"]
+#### Block: Pipeline [id="pipeline" type="data-table" gap="md" content="opportunity-rows"]
+- column#accountColumn: Account
+- column#stageColumn: Stage
+##### State: Forecast Modal [id="forecast-modal" type="modal"]
+- text#forecastBody: Forecast details stay readable.
+`
+    },
+    {
+      path: "flows.md",
+      contents: `## Flow: Primary Review [id="primary-review" start="executive-dashboard"]
+- Step: Open Forecast [from="executive-dashboard" action="open-modal:forecast-modal" to="forecast-modal"]
+`
+    },
+    {
+      path: "content.md",
+      contents: `## Content: Opportunity Rows [id="opportunity-rows" type="table-rows"]
+- Row: Acme Expansion [accountColumn="Acme" stageColumn="Commit" value="$82k"]
+- Row: Northwind Pilot [accountColumn="Northwind" stageColumn="Best Case" value="$41k"]
+`
+    },
+    {
+      path: "layout.md",
+      contents: `## Layout: Pipeline Density [target="block:pipeline"]
+- Control: density [value="compact"]
+- Control: padding [value="md"]
+- Control: collapse [value="stack" at="tablet"]
+- Control: overflow [value="contain"]
+`
+    },
+    {
+      path: "tokens.md",
+      contents: `## Tokens: Theme [id="default"]
+- Tone: brand [value="blue"]
+- Radius: controls [value="sm"]
+- Density: interface [value="compact"]
+- Treatment: cards [value="outlined"]
+`
+    },
+    {
+      path: "acceptance.md",
+      contents: `## Acceptance
+- Invariant: Single modal stack [target="screen:*"]
+- Invariant: Reachable flow [target="flow:primary-review"]
+- Invariant: Overflow containment [target="block:pipeline"]
+- Note: Long account names must wrap inside cards without spilling.
+`
+    }
+  ]
+};
+
 describe("IR_SCHEMA", () => {
   test("describes the v1 IR contract with deterministic top-level fields", () => {
     assert.deepEqual(Object.keys(IR_SCHEMA), [
@@ -232,7 +318,15 @@ describe("IR_SCHEMA", () => {
     ]);
     assert.deepEqual(Object.keys(IR_SCHEMA.definitions), [
       "metadata",
+      "packageMetadata",
+      "includedFile",
       "renderingTarget",
+      "adapter",
+      "resolvedLibrary",
+      "assetProvenance",
+      "acceptanceSummary",
+      "sourceRef",
+      "layout",
       "screen",
       "region",
       "block",
@@ -240,7 +334,12 @@ describe("IR_SCHEMA", () => {
       "element",
       "action",
       "state",
-      "transition"
+      "transition",
+      "flow",
+      "contentRecord",
+      "layoutDeclaration",
+      "tokenGroup",
+      "acceptance"
     ]);
   });
 });
@@ -254,6 +353,7 @@ describe("compileToIr", () => {
       title: "Task Board",
       metadata: {
         generatedBy: "spec-ui",
+        sourceMode: "single-file",
         sourceHash: sourceHash(validSpec),
         compiledAt: null,
         surface: "app",
@@ -262,7 +362,8 @@ describe("compileToIr", () => {
           version: SPEC_UI_VERSION,
           resolvedTarget: "baseline",
           selectionSource: "default"
-        }
+        },
+        ...baselineMetadata
       },
       screens: [
         {
@@ -391,6 +492,7 @@ describe("compileToIr", () => {
 
     assert.deepEqual(ir.metadata, {
       generatedBy: "spec-ui",
+      sourceMode: "single-file",
       sourceHash: sourceHash(saasMarkdown),
       compiledAt: null,
       surface: "app",
@@ -399,7 +501,8 @@ describe("compileToIr", () => {
         version: SPEC_UI_VERSION,
         resolvedTarget: "baseline",
         selectionSource: "source"
-      }
+      },
+      ...baselineMetadata
     });
     assert.deepEqual(ir.screens[0], {
       id: "dashboard",
@@ -591,6 +694,7 @@ describe("compileToIr", () => {
       resolvedTarget: "baseline",
       selectionSource: "options"
     });
+    assert.deepEqual(ir.metadata.adapter, baselineMetadata.adapter);
   });
 
   test("rejects unsupported adapter configuration before IR emission", () => {
@@ -601,7 +705,7 @@ describe("compileToIr", () => {
         assert.deepEqual(error.errors, [
           {
             code: "unsupported_rendering_target",
-            message: 'Unsupported rendering target "tailwind". Only "baseline" is supported.',
+            message: 'Unsupported rendering target "tailwind". Supported targets: baseline, bootstrap-html.',
             line: 1
           }
         ]);
@@ -628,5 +732,98 @@ describe("compileToIr", () => {
       resolvedTarget: "baseline",
       selectionSource: "source"
     });
+    assert.equal(handoff.sourceMode, "single-file");
+    assert.deepEqual(handoff.adapter, baselineMetadata.adapter);
+  });
+
+  test("compiles package layout, flow, content, tokens, and acceptance deterministically", () => {
+    const first = serializeIr(compilePackageToIr(packageInput));
+    const second = serializeIr(compilePackageToIr(packageInput));
+    const ir = JSON.parse(first);
+
+    assert.equal(first, second);
+    assert.equal(ir.metadata.sourceMode, "package");
+    assert.equal(ir.metadata.package.manifestPath, packageInput.manifestPath);
+    assert.equal(ir.metadata.package.fidelity, "prototype");
+    assert.deepEqual(ir.metadata.renderingTarget, {
+      target: "bootstrap-html",
+      version: SPEC_UI_VERSION,
+      resolvedTarget: "bootstrap-html",
+      selectionSource: "source"
+    });
+    assert.deepEqual(ir.metadata.resolvedLibrary, {
+      name: "bootstrap",
+      version: "5"
+    });
+    assert.deepEqual(ir.metadata.assetProvenance, {
+      mode: "vendored",
+      source: "bootstrap-5"
+    });
+    assert.deepEqual(
+      ir.metadata.package.includedFiles.map((file) => [file.path, file.role, file.exists]),
+      [
+        ["screens.md", "screens", true],
+        ["flows.md", "flows", true],
+        ["content.md", "content", true],
+        ["layout.md", "layout", true],
+        ["tokens.md", "tokens", true],
+        ["acceptance.md", "acceptance", true]
+      ]
+    );
+
+    const pipeline = ir.screens[0].regions[0].blocks[0];
+    assert.deepEqual(pipeline.layout, {
+      density: "compact",
+      padding: "md",
+      collapse: {
+        value: "stack",
+        at: "tablet"
+      },
+      overflow: "contain"
+    });
+    assert.deepEqual(
+      pipeline.items.map((item) => [item.id, item.type, item.source.role]),
+      [
+        ["accountColumn", "column", "screens"],
+        ["stageColumn", "column", "screens"],
+        ["pipeline-opportunity-rows-acme-expansion", "row", "content"],
+        ["pipeline-opportunity-rows-northwind-pilot", "row", "content"]
+      ]
+    );
+    assert.deepEqual(ir.flows[0].steps[0], {
+      label: "Open Forecast",
+      from: "executive-dashboard",
+      action: "open-modal:forecast-modal",
+      to: "forecast-modal",
+      source: {
+        file: "flows.md",
+        role: "flows",
+        line: 2
+      }
+    });
+    assert.deepEqual(
+      ir.tokens[0].controls.map((control) => [control.type, control.target, control.value]),
+      [
+        ["tone", "brand", "blue"],
+        ["radius", "controls", "sm"],
+        ["density", "interface", "compact"],
+        ["treatment", "cards", "outlined"]
+      ]
+    );
+    assert.deepEqual(ir.metadata.acceptanceSummary, {
+      invariantCount: 3,
+      noteCount: 1,
+      invariants: ir.acceptance.invariants
+    });
+  });
+
+  test("reports package readiness status without rendering", () => {
+    const status = getPackageStatus(packageInput);
+
+    assert.equal(status.readiness, "ready");
+    assert.equal(status.title, "Revenue Workspace");
+    assert.equal(status.adapter, "bootstrap-html");
+    assert.equal(status.acceptance.invariantCount, 3);
+    assert.equal(status.validationErrors.length, 0);
   });
 });

@@ -11,9 +11,68 @@ export const SURFACES = new Set(["app", "marketing"]);
 
 export const SHELLS = new Set(["app", "marketing", "none"]);
 
-export const ADAPTER_TARGETS = new Set(["baseline"]);
+export const ADAPTER_TARGETS = new Set(["baseline", "bootstrap-html"]);
+
+export const PACKAGE_MANIFEST = "prototype.md";
+
+export const PACKAGE_ROLES = new Set([
+  "screens",
+  "flows",
+  "content",
+  "layout",
+  "tokens",
+  "acceptance"
+]);
 
 export const GAP_VALUES = new Set(["none", "xs", "sm", "md", "lg", "xl"]);
+
+export const LAYOUT_CONTROL_VALUES = {
+  gap: GAP_VALUES,
+  padding: new Set(["none", "xs", "sm", "md", "lg", "xl"]),
+  density: new Set(["compact", "cozy", "comfortable", "spacious"]),
+  width: new Set(["narrow", "content", "wide", "full"]),
+  align: new Set(["start", "center", "end", "stretch", "between"]),
+  columns: new Set(["1", "2", "3", "4", "auto"]),
+  collapse: new Set(["none", "stack", "tabs", "scroll", "wrap"]),
+  collapseAt: new Set(["mobile", "tablet", "desktop"]),
+  text: new Set(["wrap", "nowrap", "truncate", "balance"]),
+  overflow: new Set(["visible", "contain", "scroll", "clip"])
+};
+
+export const LAYOUT_CONTROLS = new Set(Object.keys(LAYOUT_CONTROL_VALUES));
+
+export const TOKEN_CONTROL_VALUES = {
+  tone: new Set(["brand", "neutral", "success", "warning", "danger", "info"]),
+  toneValue: new Set(["blue", "teal", "green", "amber", "red", "purple", "slate", "gray"]),
+  radius: new Set(["none", "sm", "md", "lg", "pill"]),
+  density: new Set(["compact", "cozy", "comfortable"]),
+  treatment: new Set(["plain", "outlined", "filled", "elevated", "ghost"]),
+  brand: new Set(["blue", "teal", "green", "amber", "red", "purple", "slate", "gray"]),
+  controls: new Set(["none", "sm", "md", "lg", "pill"]),
+  interface: new Set(["compact", "cozy", "comfortable"]),
+  cards: new Set(["plain", "outlined", "filled", "elevated", "ghost"])
+};
+
+export const TOKEN_CONTROLS = new Set(Object.keys(TOKEN_CONTROL_VALUES));
+
+export const ACCEPTANCE_INVARIANTS = new Set([
+  "Stable navigation labels",
+  "Single modal stack",
+  "Reachable flow",
+  "Overflow containment"
+]);
+
+export const PACKAGE_FLOW_ACTION_TYPES = new Set([
+  "navigate",
+  "open-modal",
+  "close-modal",
+  "open-drawer",
+  "close-drawer",
+  "submit-form",
+  "set-tab",
+  "toggle",
+  "show-state"
+]);
 
 export const APP_SCREEN_KINDS = new Set([
   "dashboard",

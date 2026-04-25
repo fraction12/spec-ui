@@ -10,14 +10,18 @@ import {
   GAP_VALUES,
   IMPLEMENTATION_DETAIL_PATTERN,
   ITEM_TYPES,
+  LAYOUT_CONTROL_VALUES,
   MARKETING_BLOCK_TYPES,
   MARKETING_REGION_TYPES,
   MARKETING_SCREEN_KINDS,
+  PACKAGE_FLOW_ACTION_TYPES,
+  PACKAGE_ROLES,
   REGION_TYPES,
   SCREEN_KINDS,
   SHELLS,
   STATE_TYPES,
-  SURFACES
+  SURFACES,
+  TOKEN_CONTROL_VALUES
 } from "./contracts.js";
 
 const SCREEN_ACTIONS = new Set(["navigate"]);
@@ -26,10 +30,11 @@ const STATE_ACTIONS = new Set(["open-modal", "close-modal", "show-state", "set-t
 export function validateSource(source) {
   const errors = [];
   const parseErrors = source?.errors ?? [];
+  const packageMode = source?.sourceMode === "package";
 
   errors.push(...parseErrors.filter((error) => error.code !== "raw_html"));
 
-  if (!source?.title && !hasError(errors, "missing_spec_title")) {
+  if (!source?.title && !packageMode && !hasError(errors, "missing_spec_title")) {
     errors.push({
       code: "missing_spec_title",
       message: 'First non-empty line must be "# Spec: <title>".',
@@ -38,8 +43,16 @@ export function validateSource(source) {
   }
 
   validateSpecAttrs(errors, source);
+  if (packageMode) validatePackageManifest(errors, source);
 
-  if (!source?.screens?.length) {
+  if (
+    !source?.screens?.length &&
+    (!packageMode || !hasAnyError(errors, [
+      "missing_package_manifest",
+      "missing_package_include",
+      "package_include_outside_root"
+    ]))
+  ) {
     errors.push({
       code: "no_screens",
       message: "Spec must include at least one screen.",
@@ -64,43 +77,43 @@ export function validateSource(source) {
   for (const screen of source?.screens ?? []) {
     requireId(errors, screen, "screen");
     validateScreen(errors, source, screen);
-    collectId(errors, ids, screen);
+    collectId(errors, ids, screen, { packageMode });
 
     for (const region of screen.regions ?? []) {
       requireId(errors, region, "region");
       validateRegion(errors, source, screen, region);
-      collectId(errors, ids, region);
+      collectId(errors, ids, region, { packageMode });
 
       for (const block of region.blocks ?? []) {
-        validateBlockAndChildren(errors, ids, source, screen, block, screenIds, stateIds);
+        validateBlockAndChildren(errors, ids, source, screen, block, screenIds, stateIds, { packageMode });
       }
     }
 
     for (const section of screen.sections ?? []) {
       requireId(errors, section, "section");
       validateImplementationAttrs(errors, section.attrs, section.line);
-      collectId(errors, ids, section);
+      collectId(errors, ids, section, { packageMode });
 
       for (const element of section.elements ?? []) {
         requireId(errors, element, "element");
         validateElement(errors, element, screenIds, stateIds);
-        collectId(errors, ids, element);
+        collectId(errors, ids, element, { packageMode });
       }
 
       for (const action of section.actions ?? []) {
         requireId(errors, action, "action");
         validateAction(errors, action, screenIds, stateIds);
-        collectId(errors, ids, action);
+        collectId(errors, ids, action, { packageMode });
       }
 
       for (const block of section.blocks ?? []) {
-        validateBlockAndChildren(errors, ids, source, screen, block, screenIds, stateIds);
+        validateBlockAndChildren(errors, ids, source, screen, block, screenIds, stateIds, { packageMode });
       }
     }
 
     for (const state of screen.states ?? []) {
       requireId(errors, state, "state");
-      collectId(errors, ids, state);
+      collectId(errors, ids, state, { packageMode });
       if (!STATE_TYPES.has(state.type)) {
         errors.push({
           code: "unsupported_state_type",
@@ -117,13 +130,375 @@ export function validateSource(source) {
         } else {
           validateAction(errors, item, screenIds, stateIds);
         }
-        collectId(errors, ids, item);
+        collectId(errors, ids, item, { packageMode });
       }
     }
   }
 
+  if (packageMode) {
+    validatePackageReferences(errors, source, ids);
+  }
+
   errors.push(...parseErrors.filter((error) => error.code === "raw_html"));
   return errors;
+}
+
+export function getPackageStatus(source) {
+  const errors = validateSource(source);
+  const blockingCodes = new Set([
+    "missing_package_include",
+    "unresolved_content_reference",
+    "unresolved_layout_target",
+    "unresolved_flow_target"
+  ]);
+  const readiness = errors.length === 0
+    ? "ready"
+    : errors.some((error) => blockingCodes.has(error.code))
+      ? "blocked"
+      : "invalid";
+
+  return {
+    sourceMode: source?.sourceMode ?? "single-file",
+    title: source?.title ?? "",
+    manifestPath: source?.package?.manifestPath ?? null,
+    adapter: source?.adapter ?? source?.attrs?.adapter ?? null,
+    fidelity: source?.fidelity ?? null,
+    includedFiles: (source?.package?.includes ?? []).map((include) => ({
+      path: include.path,
+      role: include.role,
+      required: include.required,
+      exists: include.exists === true,
+      parseStatus: include.parseStatus ?? "pending",
+      sourceFile: include.sourceFile,
+      line: include.line
+    })),
+    missingIncludes: errors
+      .filter((error) => error.code === "missing_package_include")
+      .map((error) => error.path),
+    validationErrors: errors,
+    acceptanceInvariantCount: source?.acceptance?.invariants?.length ?? 0,
+    readiness
+  };
+}
+
+function validatePackageManifest(errors, source) {
+  for (const include of source?.package?.includes ?? []) {
+    if (!PACKAGE_ROLES.has(include.role)) {
+      errors.push({
+        code: "unsupported_package_role",
+        message: `Unsupported package role "${include.role}".`,
+        line: include.line,
+        sourceFile: include.sourceFile,
+        path: include.path
+      });
+    }
+
+    if (include.outsideRoot) {
+      errors.push({
+        code: "package_include_outside_root",
+        message: `Package include "${include.path}" must stay inside the package root.`,
+        line: include.line,
+        sourceFile: include.sourceFile,
+        path: include.path
+      });
+    }
+
+    if (include.required && include.exists === false && !include.outsideRoot) {
+      errors.push({
+        code: "missing_package_include",
+        message: `Required package include "${include.path}" was not found.`,
+        line: include.line,
+        sourceFile: include.sourceFile,
+        path: include.path
+      });
+    }
+  }
+
+  const provenance = source?.attrs?.assetProvenance;
+  if (provenance && !["inline", "vendored"].includes(provenance)) {
+    errors.push({
+      code: "adapter_asset_provenance_unknown",
+      message: `Adapter asset provenance "${provenance}" is not traceable.`,
+      line: source.line
+    });
+  }
+}
+
+function validatePackageReferences(errors, source, ids) {
+  const index = collectReferenceIndex(source);
+  const packageMode = true;
+
+  for (const flow of source.flows ?? []) {
+    requirePackageId(errors, flow, "flow");
+    collectId(errors, ids, flow, { packageMode });
+
+    if (flow.start && !index.screens.has(flow.start)) {
+      unresolvedFlowTarget(errors, flow, flow.start);
+    }
+
+    for (const step of flow.steps ?? []) {
+      validateFlowStep(errors, step, index);
+    }
+  }
+
+  for (const record of source.contentRecords ?? []) {
+    requirePackageId(errors, record, "content record");
+    collectId(errors, ids, record, { packageMode });
+  }
+
+  for (const block of getAllBlocks(source)) {
+    const contentRef = block.attrs?.content ?? block.attrs?.contentRef ?? block.attrs?.contentRecord;
+    if (contentRef && !index.content.has(contentRef)) {
+      errors.push({
+        code: "unresolved_content_reference",
+        message: `Content record "${contentRef}" is not declared in the package.`,
+        line: block.line,
+        sourceFile: block.sourceFile
+      });
+    }
+  }
+
+  for (const layout of source.layout ?? []) {
+    validateLayoutTarget(errors, layout, index);
+    for (const control of layout.controls ?? []) {
+      validateLayoutControl(errors, control);
+    }
+  }
+
+  for (const tokenGroup of source.tokens ?? []) {
+    if (tokenGroup.id) collectId(errors, ids, tokenGroup, { packageMode });
+    for (const control of tokenGroup.controls ?? []) {
+      validateTokenControl(errors, control);
+    }
+  }
+
+  for (const invariant of source.acceptance?.invariants ?? []) {
+    if (invariant.target && !targetExists(invariant.target, index, { allowWildcard: true })) {
+      unresolvedFlowTarget(errors, invariant, invariant.target);
+    }
+  }
+}
+
+function validateFlowStep(errors, step, index) {
+  if (step.from && !index.any.has(step.from)) {
+    unresolvedFlowTarget(errors, step, step.from);
+  }
+
+  if (step.to && !index.any.has(step.to)) {
+    unresolvedFlowTarget(errors, step, step.to);
+  }
+
+  const action = parseActionValue(step.action);
+  if (!action.type || !PACKAGE_FLOW_ACTION_TYPES.has(action.type)) {
+    unresolvedFlowTarget(errors, step, step.action);
+    return;
+  }
+
+  if (action.target && !index.any.has(action.target)) {
+    unresolvedFlowTarget(errors, step, action.target);
+  }
+}
+
+function validateLayoutTarget(errors, layout, index) {
+  if (!targetExists(layout.target, index)) {
+    errors.push({
+      code: "unresolved_layout_target",
+      message: `Layout target "${layout.target}" does not match a declared screen, region, or block.`,
+      line: layout.line,
+      sourceFile: layout.sourceFile
+    });
+  }
+}
+
+function validateLayoutControl(errors, control) {
+  const name = control.name;
+  const value = control.attrs?.value;
+
+  if (!Object.hasOwn(LAYOUT_CONTROL_VALUES, name)) {
+    unsupportedLayoutControl(errors, control, name, value);
+    return;
+  }
+
+  if (!value || !LAYOUT_CONTROL_VALUES[name].has(value)) {
+    unsupportedLayoutControl(errors, control, name, value);
+  }
+
+  if (name === "collapse" && control.attrs?.at && !LAYOUT_CONTROL_VALUES.collapseAt.has(control.attrs.at)) {
+    unsupportedLayoutControl(errors, control, "collapseAt", control.attrs.at);
+  }
+}
+
+function validateTokenControl(errors, control) {
+  const value = control.attrs?.value;
+
+  if (!Object.hasOwn(TOKEN_CONTROL_VALUES, control.name)) {
+    unsupportedTokenControl(errors, control, control.name, value);
+    return;
+  }
+
+  if (hasRawTokenValue(value) || hasRawTokenValue(control.target)) {
+    unsupportedTokenControl(errors, control, control.name, value);
+    return;
+  }
+
+  if (control.name === "tone") {
+    const target = control.target;
+    if (!TOKEN_CONTROL_VALUES.tone.has(target) || !TOKEN_CONTROL_VALUES.toneValue.has(value)) {
+      unsupportedTokenControl(errors, control, control.name, value);
+    }
+    return;
+  }
+
+  if (!value || !TOKEN_CONTROL_VALUES[control.name].has(value)) {
+    unsupportedTokenControl(errors, control, control.name, value);
+  }
+}
+
+function collectReferenceIndex(source) {
+  const index = {
+    screens: new Set(),
+    regions: new Set(),
+    blocks: new Set(),
+    states: new Set(),
+    actions: new Set(),
+    flows: new Set(),
+    content: new Set(),
+    any: new Set()
+  };
+
+  const add = (set, id) => {
+    if (!id) return;
+    set.add(id);
+    index.any.add(id);
+  };
+
+  for (const screen of source.screens ?? []) {
+    add(index.screens, screen.id);
+    for (const region of screen.regions ?? []) {
+      add(index.regions, region.id);
+      for (const block of region.blocks ?? []) collectBlockReferenceIds(index, block);
+    }
+    for (const section of screen.sections ?? []) {
+      add(index.regions, section.id);
+      for (const action of section.actions ?? []) add(index.actions, action.id);
+      for (const element of section.elements ?? []) add(index.actions, element.action ? element.id : "");
+      for (const block of section.blocks ?? []) collectBlockReferenceIds(index, block);
+    }
+    for (const state of screen.states ?? []) add(index.states, state.id);
+  }
+
+  for (const flow of source.flows ?? []) add(index.flows, flow.id);
+  for (const record of source.contentRecords ?? []) add(index.content, record.id);
+
+  return index;
+}
+
+function collectBlockReferenceIds(index, block) {
+  index.blocks.add(block.id);
+  index.any.add(block.id);
+
+  for (const action of block.actions ?? []) {
+    index.actions.add(action.id);
+    index.any.add(action.id);
+  }
+
+  for (const item of block.items ?? []) {
+    if (item.action) {
+      index.actions.add(item.id);
+      index.any.add(item.id);
+    }
+  }
+
+  for (const state of block.states ?? []) {
+    index.states.add(state.id);
+    index.any.add(state.id);
+    for (const action of state.actions ?? []) {
+      index.actions.add(action.id);
+      index.any.add(action.id);
+    }
+  }
+}
+
+function getAllBlocks(source) {
+  const blocks = [];
+
+  for (const screen of source.screens ?? []) {
+    for (const region of screen.regions ?? []) {
+      blocks.push(...(region.blocks ?? []));
+    }
+    for (const section of screen.sections ?? []) {
+      blocks.push(...(section.blocks ?? []));
+    }
+  }
+
+  return blocks;
+}
+
+function targetExists(target, index, options = {}) {
+  const match = String(target ?? "").match(/^([a-z]+):(.+)$/);
+  if (!match) return index.any.has(String(target ?? ""));
+
+  const [, kind, id] = match;
+  if (options.allowWildcard && id === "*") return Object.hasOwn(index, `${kind}s`);
+
+  if (kind === "screen") return index.screens.has(id);
+  if (kind === "region") return index.regions.has(id);
+  if (kind === "block") return index.blocks.has(id);
+  if (kind === "state") return index.states.has(id);
+  if (kind === "action") return index.actions.has(id);
+  if (kind === "flow") return index.flows.has(id);
+  if (kind === "content") return index.content.has(id);
+  return false;
+}
+
+function parseActionValue(value) {
+  const [type, ...targetParts] = String(value ?? "").split(":");
+  return {
+    type,
+    target: targetParts.join(":")
+  };
+}
+
+function requirePackageId(errors, node, kind) {
+  if (node.id) return;
+
+  errors.push({
+    code: `missing_${kind.replaceAll(" ", "_")}_id`,
+    message: `${capitalize(kind)} must include a stable id.`,
+    line: node.line,
+    sourceFile: node.sourceFile
+  });
+}
+
+function unresolvedFlowTarget(errors, node, target) {
+  errors.push({
+    code: "unresolved_flow_target",
+    message: `Flow target "${target}" does not match a declared package id.`,
+    line: node.line,
+    sourceFile: node.sourceFile
+  });
+}
+
+function unsupportedLayoutControl(errors, control, name, value) {
+  errors.push({
+    code: "unsupported_layout_control",
+    message: `Unsupported layout control "${name}" with value "${value ?? ""}".`,
+    line: control.line,
+    sourceFile: control.sourceFile
+  });
+}
+
+function unsupportedTokenControl(errors, control, name, value) {
+  errors.push({
+    code: "unsupported_token_control",
+    message: `Unsupported token control "${name}" with value "${value ?? ""}".`,
+    line: control.line,
+    sourceFile: control.sourceFile
+  });
+}
+
+function hasRawTokenValue(value) {
+  return /#|rgb\(|hsl\(|var\(|--|\.|(?:^|\s)(?:btn|card|navbar|container|row|col)-/.test(String(value ?? ""));
 }
 
 function validateSpecAttrs(errors, source) {
@@ -227,39 +602,40 @@ function validateBlockAndChildren(
   screen,
   block,
   screenIds,
-  stateIds
+  stateIds,
+  options = {}
 ) {
   requireId(errors, block, "block");
   validateBlock(errors, source, screen, block);
-  collectId(errors, ids, block);
+  collectId(errors, ids, block, options);
 
   for (const item of block.items ?? []) {
     requireId(errors, item, "item");
     validateItem(errors, item, screenIds, stateIds);
-    collectId(errors, ids, item);
+    collectId(errors, ids, item, options);
   }
 
   for (const action of block.actions ?? []) {
     requireId(errors, action, "action");
     validateAction(errors, action, screenIds, stateIds);
-    collectId(errors, ids, action);
+    collectId(errors, ids, action, options);
   }
 
   for (const state of block.states ?? []) {
     requireId(errors, state, "state");
-    collectId(errors, ids, state);
+    collectId(errors, ids, state, options);
     validateState(errors, state);
 
     for (const item of state.items ?? []) {
       requireId(errors, item, "item");
       validateItem(errors, item, screenIds, stateIds);
-      collectId(errors, ids, item);
+      collectId(errors, ids, item, options);
     }
 
     for (const action of state.actions ?? []) {
       requireId(errors, action, "action");
       validateAction(errors, action, screenIds, stateIds);
-      collectId(errors, ids, action);
+      collectId(errors, ids, action, options);
     }
   }
 }
@@ -441,12 +817,13 @@ function validateGap(errors, node, kind, options = {}) {
   }
 }
 
-function collectId(errors, ids, node) {
+function collectId(errors, ids, node, options = {}) {
   if (!node.id) return;
 
   if (ids.has(node.id)) {
+    const code = options.packageMode ? "duplicate_package_id" : "duplicate_id";
     errors.push({
-      code: "duplicate_id",
+      code,
       message: `Duplicate id "${node.id}".`,
       line: node.line
     });
@@ -484,6 +861,10 @@ function getBlockStates(screen) {
 
 function hasError(errors, code) {
   return errors.some((error) => error.code === code);
+}
+
+function hasAnyError(errors, codes) {
+  return errors.some((error) => codes.includes(error.code));
 }
 
 function capitalize(value) {

@@ -1,0 +1,6 @@
+## Tokens: LaunchLayer Theme [id="launchlayer-theme"]
+- Tone: brand [value="blue"]
+- Tone: accent [value="green"]
+- Radius: controls [value="md"]
+- Density: interface [value="comfortable"]
+- Treatment: cards [value="outlined"]
